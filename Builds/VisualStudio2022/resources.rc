@@ -19,9 +19,9 @@ BEGIN
       VALUE "CompanyName",  "Muzi\0"
       VALUE "LegalCopyright",  "Edison\0"
       VALUE "FileDescription",  "Muzi Tame\0"
-      VALUE "FileVersion",  "0.6.1\0"
+      VALUE "FileVersion",  "0.6.2\0"
       VALUE "ProductName",  "Muzi Tame\0"
-      VALUE "ProductVersion",  "0.6.1\0"
+      VALUE "ProductVersion",  "0.6.2\0"
     END
   END
 

@@ -1,8 +1,15 @@
-# Muzi Tame v0.6.1 — FrankenTame engine
+# Muzi Tame v0.6.2 — FrankenTame engine
 
 Automatic resonance suppressor (JUCE, VST3 / AU / Standalone). Full user guide: `Muzi Tame Manual.pdf`.
 
 ![Muzi Tame](screenshot.png)
+
+## What's new in v0.6.2 (the real cause of the lag)
+- **Xcode's Debug build was unoptimised (-O0).** Opening the .jucer in Xcode and pressing Build or Run builds the *Debug* configuration, and that had optimisation switched off. Every speed test so far measured Release, so they never saw it. Measured on the same engine: -O0 costs about 3.5x the CPU of -O3 on average, and single audio blocks regularly ran past their real-time deadline (dropouts). The analyser drawing gets the same penalty, which is what made the whole Mac stutter.
+  - Debug is now -O3 in every exporter (Xcode, Visual Studio, Linux), so whichever button you press you get a fast plugin. Debug still keeps its debug symbols and checks.
+  - If an unoptimised build is ever loaded, the footer shows **SLOW UNOPTIMISED BUILD** in red.
+  - The Mac CI build now fails if any Xcode configuration is -O0.
+- **New instances start in Live mode (0 ms latency)**, so nothing arrives late while recording or monitoring. Switch to Standard or High-res for mixing, where the DAW compensates the delay and the look-ahead catches more short harshness. Saved sessions keep the mode they were saved with.
 
 ## What's new in v0.6.1 (measured on real Macs)
 `.github/workflows/perf.yml` runs `tests/perf/Perf.cpp` on GitHub's Intel Mac (i7-8700B, the same chip generation as a 2019 MacBook Pro) and on Apple Silicon (M2 Pro). It times every audio block against its real-time budget, and times the display drawn with macOS's own renderer at Retina resolution. The full tables are in each run's Summary.

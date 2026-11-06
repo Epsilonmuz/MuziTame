@@ -757,5 +757,13 @@ void MuziTameEditor::paint (juce::Graphics& g)
     g.setFont (font (10.5f * s));
     juce::ignoreUnused (ms);
     g.drawText (footerText(), footer.reduced ((int) (18 * s), 0), juce::Justification::centredLeft);
-    g.drawText ("v0.6.1   |   double-click any control to reset", footer.reduced ((int) (18 * s), 0), juce::Justification::centredRight);
+    g.drawText ("v0.6.2   |   double-click any control to reset", footer.reduced ((int) (18 * s), 0), juce::Justification::centredRight);
+
+   #if (defined (__clang__) || defined (__GNUC__)) && ! defined (__OPTIMIZE__)
+    // An unoptimised (-O0) build runs the DSP and the analyser several times slower
+    // and makes the whole computer stutter. Say so loudly instead of failing silently.
+    g.setColour (juce::Colour (0xffff5a5a));
+    g.setFont (font (11.0f * s).boldened());
+    g.drawText ("SLOW UNOPTIMISED BUILD", footer, juce::Justification::centred);
+   #endif
 }
