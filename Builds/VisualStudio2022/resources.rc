@@ -9,8 +9,8 @@
 #include <windows.h>
 
 VS_VERSION_INFO VERSIONINFO
-FILEVERSION  0,7,0,0
-PRODUCTVERSION  0,7,0,0
+FILEVERSION  0,8,0,0
+PRODUCTVERSION  0,8,0,0
 BEGIN
   BLOCK "StringFileInfo"
   BEGIN
@@ -19,9 +19,9 @@ BEGIN
       VALUE "CompanyName",  "Muzi\0"
       VALUE "LegalCopyright",  "Edison\0"
       VALUE "FileDescription",  "Muzi Tame\0"
-      VALUE "FileVersion",  "0.7.0\0"
+      VALUE "FileVersion",  "0.8.0\0"
       VALUE "ProductName",  "Muzi Tame\0"
-      VALUE "ProductVersion",  "0.7.0\0"
+      VALUE "ProductVersion",  "0.8.0\0"
     END
   END
 

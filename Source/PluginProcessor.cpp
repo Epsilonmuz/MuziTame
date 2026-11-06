@@ -15,6 +15,12 @@ static const FactoryPreset kPresets[] = {
     { "Mix Bus - Polish",         {  60,  3.0,  8, 10,  150,  50,   80,    6,  100, 20,     20000,   0,   50 } },
     { "Mastering - Gentle",       {  40,  4.0,  8, 15,  200,  40,   90,    4,  100, 20,     20000,   0,   50 } },
     { "Aggressive",               { 180,  0.0, 16,  1,   50,  30,   60,   18,  100, 20,     20000,   0,   30 } },
+    // v0.8: for 808s and bass that boom on some notes and not others (room/speaker modes).
+    // Tuned on a saturated 808 line through a 55 Hz room mode + 165 Hz box resonance: note-to-note
+    // level spread 3.0 -> 2.4 dB, 165 Hz -5 dB, 55 Hz boom -1.6 dB after the +1 dB Output (Live).
+    // Output is +1 dB because on an 808 with no boom the cuts take about 1.5 dB off the low end
+    // (net -0.5 dB). Kept last so older sessions' program numbers do not move.
+    { "808 & Bass - Even Out",    { 140,  0.5,  8,  4,  100,  40,   45,   10,  100, 20,     5000,    1,   60 } },
 };
 static const char* kPresetIds[] = { "depth", "sensitivity", "sharpness", "attack", "release", "broad",
                                     "guard", "maxcut", "mix", "low", "high", "trim", "punch" };
@@ -26,11 +32,109 @@ const juce::String MuziTameProcessor::getProgramName (int i) { return getFactory
 void MuziTameProcessor::loadFactoryPreset (int index)
 {
     currentPreset = juce::jlimit (0, getNumFactoryPresets() - 1, index);
+    userPresetName = {};
     const auto& p = getFactoryPreset (currentPreset);
     for (size_t k = 0; k < std::size (kPresetIds); ++k)
         if (auto* prm = apvts.getParameter (kPresetIds[k]))
             prm->setValueNotifyingHost (prm->convertTo0to1 (p.v[k]));
     apvts.state.setProperty ("preset", currentPreset, nullptr);
+    apvts.state.setProperty ("userPreset", juce::String(), nullptr);
+    takePresetSnapshot();
+    ++presetVersion;
+}
+
+// ------------------------------------------------------------------ user presets
+// One small XML file per preset. Only the sound controls are stored (the same ones the
+// factory presets set): Mode, Delta and Bypass stay as they are, so loading a preset
+// never switches you out of Live while recording.
+juce::File MuziTameProcessor::getUserPresetFolder()
+{
+    const auto env = juce::SystemStats::getEnvironmentVariable ("MUZI_PRESET_DIR", {});   // tests
+    if (env.isNotEmpty()) return juce::File (env);
+    const auto base = juce::File::getSpecialLocation (juce::File::userApplicationDataDirectory);
+   #if JUCE_MAC
+    return base.getChildFile ("Audio/Presets/Muzi/Muzi Tame");      // ~/Library/Audio/Presets/...
+   #else
+    return base.getChildFile ("Muzi/Muzi Tame/Presets");
+   #endif
+}
+
+juce::Array<juce::File> MuziTameProcessor::getUserPresets()
+{
+    auto files = getUserPresetFolder().findChildFiles (juce::File::findFiles, false, juce::String ("*") + kUserPresetExt);
+    std::sort (files.begin(), files.end(), [] (const juce::File& a, const juce::File& b)
+               { return a.getFileNameWithoutExtension().compareNatural (b.getFileNameWithoutExtension()) < 0; });
+    return files;
+}
+
+juce::File MuziTameProcessor::saveUserPreset (const juce::String& rawName)
+{
+    const auto name = juce::File::createLegalFileName (rawName.trim());
+    if (name.isEmpty()) return {};
+    const auto folder = getUserPresetFolder();
+    if (! folder.createDirectory()) return {};
+
+    juce::XmlElement xml ("MuziTamePreset");
+    xml.setAttribute ("name", name);
+    xml.setAttribute ("plugin", "Muzi Tame");
+    xml.setAttribute ("version", JucePlugin_VersionString);
+    for (auto* id : kPresetIds)
+        if (auto* prm = apvts.getParameter (id))
+        {
+            auto* e = xml.createNewChildElement ("PARAM");
+            e->setAttribute ("id", id);
+            e->setAttribute ("value", (double) prm->convertFrom0to1 (prm->getValue()));
+        }
+    const auto file = folder.getChildFile (name + kUserPresetExt);
+    if (! xml.writeTo (file)) return {};
+
+    currentPreset = -1;
+    userPresetName = name;
+    apvts.state.setProperty ("userPreset", name, nullptr);
+    takePresetSnapshot();
+    ++presetVersion;
+    return file;
+}
+
+bool MuziTameProcessor::loadUserPreset (const juce::File& file)
+{
+    const auto xml = juce::XmlDocument::parse (file);
+    if (xml == nullptr || ! xml->hasTagName ("MuziTamePreset")) return false;
+    for (auto* e : xml->getChildWithTagNameIterator ("PARAM"))
+    {
+        const auto id = e->getStringAttribute ("id");
+        if (std::find_if (std::begin (kPresetIds), std::end (kPresetIds), [&] (const char* k) { return id == k; }) == std::end (kPresetIds))
+            continue;                                   // only sound controls, never mode/delta/bypass
+        if (auto* prm = apvts.getParameter (id))
+            prm->setValueNotifyingHost (prm->convertTo0to1 ((float) e->getDoubleAttribute ("value")));
+    }
+    currentPreset = -1;
+    userPresetName = file.getFileNameWithoutExtension();
+    apvts.state.setProperty ("userPreset", userPresetName, nullptr);
+    takePresetSnapshot();
+    ++presetVersion;
+    return true;
+}
+
+juce::String MuziTameProcessor::currentPresetName() const
+{
+    return currentPreset >= 0 ? juce::String (getFactoryPreset (currentPreset).name) : userPresetName;
+}
+
+void MuziTameProcessor::takePresetSnapshot()
+{
+    for (size_t k = 0; k < std::size (kPresetIds); ++k)
+        if (auto* prm = apvts.getParameter (kPresetIds[k]))
+            presetSnapshot[k] = prm->getValue();
+}
+
+bool MuziTameProcessor::presetModified() const
+{
+    for (size_t k = 0; k < std::size (kPresetIds); ++k)
+        if (auto* prm = apvts.getParameter (kPresetIds[k]))
+            if (std::abs (prm->getValue() - presetSnapshot[k]) > 1.0e-4f)
+                return true;
+    return false;
 }
 
 // ------------------------------------------------------------------ parameters
@@ -93,6 +197,7 @@ MuziTameProcessor::MuziTameProcessor()
     bypass      = apvts.getRawParameterValue ("bypass");
     punch       = apvts.getRawParameterValue ("punch");
     bypassParam = apvts.getParameter ("bypass");
+    takePresetSnapshot();
 }
 
 bool MuziTameProcessor::isBusesLayoutSupported (const BusesLayout& layouts) const
@@ -219,6 +324,10 @@ void MuziTameProcessor::setStateInformation (const void* data, int sizeInBytes)
         {
             apvts.replaceState (juce::ValueTree::fromXml (*xml));
             currentPreset = apvts.state.getProperty ("preset", 0);
+            userPresetName = apvts.state.getProperty ("userPreset", juce::String()).toString();
+            if (userPresetName.isNotEmpty()) currentPreset = -1;
+            takePresetSnapshot();        // a saved session counts as "as loaded"
+            ++presetVersion;
         }
 }
 

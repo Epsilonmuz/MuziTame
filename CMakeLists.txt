@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.22)
-project(MuziTame VERSION 0.7.0)
+project(MuziTame VERSION 0.8.0)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_OSX_DEPLOYMENT_TARGET "12.0" CACHE STRING "")
@@ -26,7 +26,7 @@ endif()
 juce_add_plugin(MuziTame
     COMPANY_NAME "Muzi"
     PRODUCT_NAME "Muzi Tame"
-    VERSION 0.7.0
+    VERSION 0.8.0
     PLUGIN_MANUFACTURER_CODE Muzi
     PLUGIN_CODE MzTm
     FORMATS ${MT_FORMATS}
@@ -73,9 +73,20 @@ if(MT_BUILD_TEST_HOST)
     target_sources(MuziSnapshot PRIVATE tests/snapshot/Snapshot.cpp Source/PluginProcessor.cpp Source/PluginEditor.cpp)
     target_include_directories(MuziSnapshot PRIVATE Source)
     target_compile_definitions(MuziSnapshot PRIVATE MUZI_USE_JUCE_FFT=1 JUCE_WEB_BROWSER=0 JUCE_USE_CURL=0
-        JucePlugin_Name="Muzi Tame" JucePlugin_Build_Standalone=0)
+        JucePlugin_Name="Muzi Tame" JucePlugin_VersionString="0.8.0" JucePlugin_Build_Standalone=0)
     target_link_libraries(MuziSnapshot PRIVATE juce::juce_dsp)
     target_link_libraries(MuziSnapshot PRIVATE juce::juce_audio_processors juce::juce_audio_formats juce::juce_gui_basics
+        PUBLIC juce::juce_recommended_config_flags)
+endif()
+
+# User preset round trip (not part of the plugin):  MuziPresetTest
+if(MT_BUILD_TEST_HOST)
+    juce_add_console_app(MuziPresetTest PRODUCT_NAME "MuziPresetTest")
+    target_sources(MuziPresetTest PRIVATE tests/presets/PresetTest.cpp Source/PluginProcessor.cpp Source/PluginEditor.cpp)
+    target_include_directories(MuziPresetTest PRIVATE Source)
+    target_compile_definitions(MuziPresetTest PRIVATE MUZI_USE_JUCE_FFT=1 JUCE_WEB_BROWSER=0 JUCE_USE_CURL=0
+        JucePlugin_Name="Muzi Tame" JucePlugin_VersionString="0.8.0" JucePlugin_Build_Standalone=0)
+    target_link_libraries(MuziPresetTest PRIVATE juce::juce_dsp juce::juce_audio_processors juce::juce_audio_formats juce::juce_gui_basics
         PUBLIC juce::juce_recommended_config_flags)
 endif()
 
@@ -85,7 +96,7 @@ if(MT_BUILD_TEST_HOST)
     target_sources(MuziUiBench PRIVATE tests/snapshot/UiBench.cpp Source/PluginProcessor.cpp Source/PluginEditor.cpp)
     target_include_directories(MuziUiBench PRIVATE Source)
     target_compile_definitions(MuziUiBench PRIVATE MUZI_USE_JUCE_FFT=1 JUCE_WEB_BROWSER=0 JUCE_USE_CURL=0
-        JucePlugin_Name="Muzi Tame" JucePlugin_Build_Standalone=0)
+        JucePlugin_Name="Muzi Tame" JucePlugin_VersionString="0.8.0" JucePlugin_Build_Standalone=0)
     target_link_libraries(MuziUiBench PRIVATE juce::juce_dsp juce::juce_audio_processors juce::juce_audio_formats juce::juce_gui_basics
         PUBLIC juce::juce_recommended_config_flags)
 endif()
@@ -97,7 +108,7 @@ if(MT_BUILD_PERF)
     target_sources(MuziPerf PRIVATE tests/perf/Perf.cpp Source/PluginProcessor.cpp Source/PluginEditor.cpp)
     target_include_directories(MuziPerf PRIVATE Source)
     target_compile_definitions(MuziPerf PRIVATE MUZI_USE_JUCE_FFT=1 JUCE_WEB_BROWSER=0 JUCE_USE_CURL=0
-        JucePlugin_Name="Muzi Tame" JucePlugin_Build_Standalone=0)
+        JucePlugin_Name="Muzi Tame" JucePlugin_VersionString="0.8.0" JucePlugin_Build_Standalone=0)
     target_link_libraries(MuziPerf PRIVATE juce::juce_dsp juce::juce_audio_processors juce::juce_audio_formats juce::juce_gui_basics
         PUBLIC juce::juce_recommended_config_flags juce::juce_recommended_lto_flags)
 endif()

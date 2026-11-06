@@ -1,8 +1,17 @@
-# Muzi Tame v0.7.0 — FrankenTame engine
+# Muzi Tame v0.8.0 — FrankenTame engine
 
 Automatic resonance suppressor (JUCE, VST3 / AU / Standalone). Full user guide: `Muzi Tame Manual.pdf`.
 
 ![Muzi Tame](screenshot.png)
+
+## What's new in v0.8.0 (your own presets)
+- **Save your own presets.** The new **SAVE** button stores the knobs and range handles as a preset. Your presets appear under **Your presets** in the preset menu of every Muzi Tame, in any session or DAW, and the < > arrows step through factory and your own.
+  - The menu also has *Delete* (for the loaded user preset) and *Show presets folder*. Presets are `.mtpreset` files in `~/Library/Audio/Presets/Muzi/Muzi Tame/` on a Mac (`%APPDATA%\Muzi\Muzi Tame\Presets` on Windows), so they can be backed up or shared.
+  - A **\*** after the preset name means a knob has moved since it was loaded.
+  - Presets never change Mode, Delta or Bypass, so loading one while recording keeps you in Live. Sessions remember which user preset was loaded.
+- **New factory preset: 808 & Bass - Even Out**, for 808s and bass that boom on some notes and not others. Tuned on a saturated 808 line through a 55 Hz room mode and a 165 Hz box resonance: note-to-note level spread 3.0 → 2.4 dB, 165 Hz −5 dB, about 0.5 dB off an 808 with no boom (Live). It is added last, so older sessions' program numbers don't move.
+- **New manual** (`Muzi Tame Manual.pdf`) with a picture of every knob, button, handle and meter, taken from the real plugin window. Rebuild it with `tests/snapshot/ManualShots.cpp` and `docs/manual/build_manual.py`.
+- `tests/presets/PresetTest.cpp` (CMake target `MuziPresetTest`) checks saving, loading, deleting, the * mark and session restore.
 
 ## What's new in v0.7.0 (rebuilt for smooth real-time use)
 Same sound. Measured on GitHub's Intel Mac (the same chip generation as a 2019 MacBook Pro), v0.6.3 still had audio blocks running past their deadline at 128-sample buffers, and the window redraw cost about half a CPU core.
@@ -86,7 +95,7 @@ CMake alternative: `cmake -B build -DCMAKE_BUILD_TYPE=Release && cmake --build b
 ## Controls
 | Control | What it does | Default |
 |---|---|---|
-| Mode | Standard: 2048-pt analysis, 32 ms latency. High-res: 4096-pt, 91 ms latency, faster attack, finer detail (mixing/mastering) | Standard |
+| Mode | Live: 0 ms latency, for recording and monitoring. Standard: 2048-pt analysis, 32 ms latency. High-res: 4096-pt, 91 ms latency, faster attack, finer detail (mixing/mastering) | Live |
 | Depth | Scales every cut | 100 % |
 | Threshold | dB above the local spectral envelope before cutting starts | 2 dB |
 | Sharpness | Q of the narrow (moving) bells | 12 |
@@ -100,6 +109,7 @@ CMake alternative: `cmake -B build -DCMAKE_BUILD_TYPE=Release && cmake --build b
 | Low / High Limit | Processing range (drag handles in the display) | 20 Hz / 20 kHz |
 | Delta | Hear only what is removed | off |
 | Bypass | Power button; keeps latency | off |
+| Presets | Factory and your own; < > step through both; SAVE stores the current settings | Default |
 
 ## Measured (Resonance Lab, defaults, through the built VST3)
 | Test | v0.4 | v0.5 Standard | v0.5 High-res |

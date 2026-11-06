@@ -559,21 +559,19 @@ MuziTameEditor::MuziTameEditor (MuziTameProcessor& p)
     addAndMakeVisible (inMeter);
     addAndMakeVisible (outMeter);
 
-    // presets
-    for (int i = 0; i < MuziTameProcessor::getNumFactoryPresets(); ++i)
-        presetBox.addItem (MuziTameProcessor::getFactoryPreset (i).name, i + 1);
-    presetBox.setTooltip ("Factory presets: starting points for common jobs.");
-    presetBox.onChange = [this]
-    {
-        const int idx = presetBox.getSelectedItemIndex();
-        if (idx >= 0 && idx != proc.currentPreset) proc.loadFactoryPreset (idx);
-    };
-    const int np = MuziTameProcessor::getNumFactoryPresets();
-    prevPreset.onClick = [this, np] { proc.loadFactoryPreset ((proc.currentPreset + np - 1) % np); refreshPresetBox(); };
-    nextPreset.onClick = [this, np] { proc.loadFactoryPreset ((proc.currentPreset + 1) % np); refreshPresetBox(); };
-    for (auto* c : std::initializer_list<juce::Component*> { &presetBox, &prevPreset, &nextPreset })
+    // presets: factory + your own (saved as files, see the manual)
+    presetBox.setTooltip ("Presets: factory starting points and your own saved presets. A * means a knob has moved since the preset was loaded.");
+    presetBox.onAboutToOpen = [this] { rebuildPresetMenu(); };
+    presetBox.onChange = [this] { presetChosen (presetBox.getSelectedId()); };
+    prevPreset.onClick = [this] { stepPreset (-1); };
+    nextPreset.onClick = [this] { stepPreset (+1); };
+    prevPreset.setTooltip ("Previous preset (factory, then your own).");
+    nextPreset.setTooltip ("Next preset (factory, then your own).");
+    savePreset.setTooltip ("Save the current settings as your own preset.");
+    savePreset.onClick = [this] { showSaveDialog(); };
+    for (auto* c : std::initializer_list<juce::Component*> { &presetBox, &prevPreset, &nextPreset, &savePreset })
         addAndMakeVisible (c);
-    refreshPresetBox();
+    rebuildPresetMenu();
 
     // mode: segmented control bound to the choice parameter
     modeLive.getProperties().set ("edges", 1);
@@ -623,9 +621,166 @@ MuziTameEditor::~MuziTameEditor()
     setLookAndFeel (nullptr);
 }
 
+void MuziTameEditor::rebuildPresetMenu()
+{
+    userFiles = MuziTameProcessor::getUserPresets();
+    presetBox.clear (juce::dontSendNotification);
+    presetBox.addSectionHeading ("Factory");
+    for (int i = 0; i < MuziTameProcessor::getNumFactoryPresets(); ++i)
+        presetBox.addItem (MuziTameProcessor::getFactoryPreset (i).name, i + 1);
+    presetBox.addSectionHeading ("Your presets");
+    if (userFiles.isEmpty())
+    {
+        presetBox.addItem ("(none yet - click SAVE)", kUserBase - 1);
+        presetBox.setItemEnabled (kUserBase - 1, false);
+    }
+    for (int i = 0; i < userFiles.size(); ++i)
+        presetBox.addItem (userFiles[i].getFileNameWithoutExtension(), kUserBase + i);
+    presetBox.addSeparator();
+    presetBox.addItem ("Save as new preset...", kSaveId);
+    if (proc.currentPreset < 0 && proc.userPresetName.isNotEmpty())
+        presetBox.addItem ("Delete \"" + proc.userPresetName + "\"...", kDeleteId);
+    presetBox.addItem ("Show presets folder", kFolderId);
+    shownPresetText = {};
+    refreshPresetBox();
+}
+
 void MuziTameEditor::refreshPresetBox()
 {
-    presetBox.setSelectedItemIndex (proc.currentPreset, juce::dontSendNotification);
+    shownPresetVersion = proc.presetVersion.load();
+    juce::String text = proc.currentPresetName();
+    if (text.isEmpty()) text = "Default";
+    if (proc.presetModified()) text << " *";
+    if (text == shownPresetText) return;
+    shownPresetText = text;
+    presetBox.setText (text, juce::dontSendNotification);      // shows the name (and *) without selecting an item
+}
+
+void MuziTameEditor::presetChosen (int id)
+{
+    if (id >= 1 && id <= MuziTameProcessor::getNumFactoryPresets())
+        proc.loadFactoryPreset (id - 1);
+    else if (id >= kUserBase && id < kUserBase + userFiles.size())
+    {
+        if (! proc.loadUserPreset (userFiles[id - kUserBase]))
+            showDialog (std::make_unique<juce::AlertWindow> ("Muzi Tame", "That preset file could not be read.", juce::MessageBoxIconType::WarningIcon), {});
+    }
+    else if (id == kSaveId)   showSaveDialog();
+    else if (id == kDeleteId) confirmDelete();
+    else if (id == kFolderId)
+    {
+        const auto folder = MuziTameProcessor::getUserPresetFolder();
+        folder.createDirectory();
+        folder.revealToUser();
+    }
+    shownPresetText = {};
+    refreshPresetBox();
+}
+
+void MuziTameEditor::stepPreset (int delta)
+{
+    userFiles = MuziTameProcessor::getUserPresets();
+    const int nf = MuziTameProcessor::getNumFactoryPresets();
+    const int total = nf + userFiles.size();
+    int pos = proc.currentPreset;                                  // position in factory + user list
+    if (pos < 0)
+    {
+        pos = nf;                                                  // a user preset: find it
+        for (int i = 0; i < userFiles.size(); ++i)
+            if (userFiles[i].getFileNameWithoutExtension() == proc.userPresetName) { pos = nf + i; break; }
+    }
+    pos = (pos + delta + total) % total;
+    if (pos < nf) proc.loadFactoryPreset (pos);
+    else          proc.loadUserPreset (userFiles[pos - nf]);
+    shownPresetText = {};
+    refreshPresetBox();
+}
+
+void MuziTameEditor::showDialog (std::unique_ptr<juce::AlertWindow> w, std::function<void (int)> onResult)
+{
+    if (w->getNumButtons() == 0) w->addButton ("OK", 1, juce::KeyPress (juce::KeyPress::returnKey));
+    dialog = std::move (w);
+    dialog->setLookAndFeel (&lnf);
+    addAndMakeVisible (*dialog);                     // inside the plugin window, so no host can hide it behind
+    dialog->setCentrePosition (getLocalBounds().getCentre());
+    juce::Component::SafePointer<MuziTameEditor> safe (this);
+    auto* shown = dialog.get();
+    dialog->enterModalState (true, juce::ModalCallbackFunction::create ([safe, onResult, shown] (int result)
+    {
+        if (safe == nullptr) return;
+        if (onResult) onResult (result);
+        // remove this dialog later (not from inside its own callback), unless another replaced it already
+        juce::MessageManager::callAsync ([safe, shown] { if (safe != nullptr && safe->dialog.get() == shown) safe->dialog.reset(); });
+    }), false);
+}
+
+void MuziTameEditor::showSaveDialog()
+{
+    auto w = std::make_unique<juce::AlertWindow> ("Save preset", "Name your preset. It will appear under \"Your presets\" in every Muzi Tame.",
+                                                  juce::MessageBoxIconType::NoIcon);
+    w->addTextEditor ("name", proc.currentPreset < 0 ? proc.userPresetName : juce::String(), "Name:");
+    w->addButton ("Save", 1, juce::KeyPress (juce::KeyPress::returnKey));
+    w->addButton ("Cancel", 0, juce::KeyPress (juce::KeyPress::escapeKey));
+    auto* ed = w->getTextEditor ("name");
+    showDialog (std::move (w), [this, ed] (int r)
+    {
+        if (r != 1) return;
+        const auto name = juce::File::createLegalFileName (ed->getText().trim());
+        if (name.isEmpty()) return;
+        const auto doSave = [this, name]
+        {
+            if (proc.saveUserPreset (name) == juce::File())
+                juce::MessageManager::callAsync ([safe = juce::Component::SafePointer<MuziTameEditor> (this)]
+                {
+                    if (safe != nullptr)
+                        safe->showDialog (std::make_unique<juce::AlertWindow> ("Muzi Tame", "The preset could not be saved in:\n"
+                                              + MuziTameProcessor::getUserPresetFolder().getFullPathName(), juce::MessageBoxIconType::WarningIcon), {});
+                });
+            rebuildPresetMenu();
+        };
+        const auto existing = MuziTameProcessor::getUserPresetFolder().getChildFile (name + MuziTameProcessor::kUserPresetExt);
+        if (! existing.existsAsFile()) { doSave(); return; }
+        juce::MessageManager::callAsync ([safe = juce::Component::SafePointer<MuziTameEditor> (this), name, doSave]
+        {
+            if (safe == nullptr) return;
+            auto c = std::make_unique<juce::AlertWindow> ("Replace preset?", "\"" + name + "\" already exists. Replace it with the current settings?",
+                                                          juce::MessageBoxIconType::QuestionIcon);
+            c->addButton ("Replace", 1, juce::KeyPress (juce::KeyPress::returnKey));
+            c->addButton ("Cancel", 0, juce::KeyPress (juce::KeyPress::escapeKey));
+            safe->showDialog (std::move (c), [doSave] (int r2) { if (r2 == 1) doSave(); });
+        });
+    });
+    if (dialog != nullptr) ed->grabKeyboardFocus();
+}
+
+void MuziTameEditor::confirmDelete()
+{
+    const auto name = proc.userPresetName;
+    const auto file = MuziTameProcessor::getUserPresetFolder().getChildFile (name + MuziTameProcessor::kUserPresetExt);
+    if (name.isEmpty() || ! file.existsAsFile()) return;
+    auto c = std::make_unique<juce::AlertWindow> ("Delete preset?", "Delete \"" + name + "\"? Your current settings stay as they are.",
+                                                  juce::MessageBoxIconType::WarningIcon);
+    c->addButton ("Delete", 1);
+    c->addButton ("Cancel", 0, juce::KeyPress (juce::KeyPress::escapeKey));
+    showDialog (std::move (c), [this, file] (int r)
+    {
+        if (r != 1) return;
+        file.moveToTrash() || file.deleteFile();
+        rebuildPresetMenu();
+    });
+}
+
+juce::Component* MuziTameEditor::findPart (const juce::String& id)
+{
+    const std::pair<const char*, juce::Component*> parts[] = {
+        { "depth", &depth }, { "threshold", &threshold }, { "sharpness", &sharpness }, { "attack", &attack },
+        { "release", &release }, { "punch", &punch }, { "broad", &broad }, { "guard", &guard }, { "maxcut", &maxcut },
+        { "mix", &mix }, { "trim", &trim }, { "inMeter", &inMeter }, { "outMeter", &outMeter }, { "display", &display },
+        { "presetBox", &presetBox }, { "prev", &prevPreset }, { "next", &nextPreset }, { "save", &savePreset },
+        { "live", &modeLive }, { "standard", &modeStd }, { "hires", &modeHi }, { "delta", &deltaBtn },
+        { "bypass", &bypassBtn }, { "analyser", &analyserBtn } };
+    for (auto& p : parts) if (id == p.first) return p.second;
+    return nullptr;
 }
 
 void MuziTameEditor::setAnalyserQuality (int q)
@@ -652,7 +807,7 @@ void MuziTameEditor::timerCallback()
     }
     inMeter.tick();
     outMeter.tick();
-    if (presetBox.getSelectedItemIndex() != proc.currentPreset) refreshPresetBox();
+    if (proc.presetVersion.load() != shownPresetVersion || (frameCount % 8) == 1) refreshPresetBox();   // name, and * when changed
     if (auto t = footerText(); t != shownFooter) { shownFooter = t; repaint (footer); }
 }
 
@@ -678,9 +833,10 @@ void MuziTameEditor::resized()
     footer = sc (0, 574, kBaseW, 26);
     analyserBtn.setBounds (sc (kBaseW * 0.5f - 66, 577, 132, 20));
 
-    prevPreset.setBounds (sc (300, 14, 28, 28));
-    presetBox.setBounds (sc (332, 14, 236, 28));
-    nextPreset.setBounds (sc (572, 14, 28, 28));
+    prevPreset.setBounds (sc (268, 14, 28, 28));
+    presetBox.setBounds (sc (300, 14, 220, 28));
+    nextPreset.setBounds (sc (524, 14, 28, 28));
+    savePreset.setBounds (sc (556, 14, 54, 28));
     modeLive.setBounds (sc (620, 14, 56, 28));
     modeStd.setBounds (sc (676, 14, 90, 28));
     modeHi.setBounds (sc (766, 14, 64, 28));
@@ -776,7 +932,7 @@ void MuziTameEditor::paint (juce::Graphics& g)
     g.setFont (font (10.5f * s));
     juce::ignoreUnused (ms);
     g.drawText (footerText(), footer.reduced ((int) (18 * s), 0), juce::Justification::centredLeft);
-    g.drawText ("v0.7.0   |   double-click any control to reset", footer.reduced ((int) (18 * s), 0), juce::Justification::centredRight);
+    g.drawText ("v" JucePlugin_VersionString "   |   double-click any control to reset", footer.reduced ((int) (18 * s), 0), juce::Justification::centredRight);
 
    #if (defined (__clang__) || defined (__GNUC__)) && ! defined (__OPTIMIZE__)
     // An unoptimised (-O0) build runs the DSP and the analyser several times slower

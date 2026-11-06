@@ -55,7 +55,7 @@ public:
     double getTailLengthSeconds() const override { return 0.0; }
 
     int getNumPrograms() override { return getNumFactoryPresets(); }
-    int getCurrentProgram() override { return currentPreset; }
+    int getCurrentProgram() override { return juce::jmax (0, currentPreset); }
     void setCurrentProgram (int index) override { loadFactoryPreset (index); }
     const juce::String getProgramName (int index) override;
     void changeProgramName (int, const juce::String&) override {}
@@ -70,7 +70,18 @@ public:
     static int getNumFactoryPresets();
     static const FactoryPreset& getFactoryPreset (int index);
     void loadFactoryPreset (int index);
-    int currentPreset = 0;
+    int currentPreset = 0;                          // factory index, or -1 while a user preset is loaded
+
+    // user presets: .mtpreset files in a folder of their own (message thread only)
+    static constexpr const char* kUserPresetExt = ".mtpreset";
+    static juce::File getUserPresetFolder();
+    static juce::Array<juce::File> getUserPresets();
+    juce::File saveUserPreset (const juce::String& name);    // returns the file, or {} on failure
+    bool loadUserPreset (const juce::File& file);
+    juce::String userPresetName;                     // name of the loaded user preset, empty for factory
+    juce::String currentPresetName() const;
+    bool presetModified() const;                     // knobs moved since the preset was loaded
+    std::atomic<int> presetVersion { 0 };            // bumps whenever the loaded preset changes
 
     // GUI access
     const muzi::FrankenTameEngine& activeEngine() const { return engines[(size_t) activeMode.load()]; }
@@ -125,6 +136,8 @@ private:
     juce::AudioProcessorParameter* bypassParam = nullptr;
 
     void pushTap (AudioTap& tap, const juce::AudioBuffer<float>& b, std::atomic<float>& level);
+    float presetSnapshot[13] {};                     // values as loaded, for the "modified" mark
+    void takePresetSnapshot();
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (MuziTameProcessor)
 };

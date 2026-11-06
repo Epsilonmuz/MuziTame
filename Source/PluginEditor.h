@@ -100,6 +100,16 @@ private:
     int handleAt (float x) const;
 };
 
+// ---------------------------------------------------------------- preset menu
+// A ComboBox that re-reads the user preset folder every time it opens, so presets
+// saved in another instance (or copied into the folder by hand) show up straight away.
+class PresetBox : public juce::ComboBox
+{
+public:
+    std::function<void()> onAboutToOpen;
+    void showPopup() override { if (onAboutToOpen) onAboutToOpen(); juce::ComboBox::showPopup(); }
+};
+
 // ---------------------------------------------------------------- editor
 class MuziTameEditor : public juce::AudioProcessorEditor, private juce::Timer
 {
@@ -128,8 +138,26 @@ private:
     Knob depth, threshold, sharpness, attack, release, punch, broad, guard, maxcut, mix, trim;
     LevelMeter inMeter, outMeter;
 
-    juce::ComboBox presetBox;
-    juce::TextButton prevPreset { "<" }, nextPreset { ">" };
+    PresetBox presetBox;
+    juce::TextButton prevPreset { "<" }, nextPreset { ">" }, savePreset { "SAVE" };
+    juce::Array<juce::File> userFiles;               // as listed in the menu
+    int shownPresetVersion = -1;
+    juce::String shownPresetText;
+    std::unique_ptr<juce::AlertWindow> dialog;
+    enum { kUserBase = 1000, kSaveId = 9001, kDeleteId = 9002, kFolderId = 9003 };
+    void rebuildPresetMenu();
+    void presetChosen (int id);
+    void stepPreset (int delta);
+    void showSaveDialog();
+    void confirmDelete();
+    void showDialog (std::unique_ptr<juce::AlertWindow>, std::function<void (int)> onResult);
+
+public:
+    // for the manual's screenshots and tests
+    juce::Component* findPart (const juce::String& id);
+    void showSaveDialogForSnapshot (const juce::String& name) { showSaveDialog(); if (dialog) dialog->getTextEditor ("name")->setText (name); }
+    juce::Component* dialogForSnapshot() { return dialog.get(); }
+private:
     juce::TextButton modeLive { "LIVE" }, modeStd { "STANDARD" }, modeHi { "HI-RES" }, deltaBtn { "DELTA" }, analyserBtn;
     int frameCount = 0;
     void setAnalyserQuality (int q);

@@ -46,6 +46,17 @@ public:
         setColour (juce::TextButton::buttonOnColourId, col::accent.withAlpha (0.18f));
         setColour (juce::TextButton::textColourOffId, col::quiet);
         setColour (juce::TextButton::textColourOnId, col::accent);
+        // preset dialogs (Save / Replace / Delete)
+        setColour (juce::AlertWindow::backgroundColourId, col::bg1);
+        setColour (juce::AlertWindow::textColourId, col::text);
+        setColour (juce::AlertWindow::outlineColourId, col::line);
+        setColour (juce::TextEditor::backgroundColourId, col::bg2);
+        setColour (juce::TextEditor::textColourId, col::text);
+        setColour (juce::TextEditor::outlineColourId, col::line);
+        setColour (juce::TextEditor::focusedOutlineColourId, col::accent);
+        setColour (juce::TextEditor::highlightColourId, col::accent.withAlpha (0.3f));
+        setColour (juce::CaretComponent::caretColourId, col::accent);
+        setColour (juce::Label::textColourId, col::text);
     }
 
     // ---- knobs: dark body, value arc with soft glow, pointer
