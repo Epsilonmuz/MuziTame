@@ -128,5 +128,45 @@ int main()
         const double perSecond = (tUpd + tDraw) / (ticks / 30.0);
         std::printf ("| %s | %.2f ms | %.2f ms | %.0f ms | %.1f %% |\n", qName[q], tUpd / ticks, draws ? tDraw / draws : 0.0, perSecond, perSecond / 10.0);
     }
+
+    // ---------------------------------------------------------------- whole window, as macOS asks for it
+    // macOS merges a window's changed areas into one rectangle, so it asks for the bounding box of
+    // the analyser and the meters: almost the whole window, knobs included.
+    std::printf ("\n## Whole window per frame (analyser Full), as macOS merges the changed areas\n\n");
+    std::printf ("| Renderer | Per frame | Share of one core at 30 fps |\n|---|---|---|\n");
+    for (int native = 1; native >= 0; --native)
+    {
+        setenv ("MUZI_NATIVE_RENDER", native ? "1" : "0", 1);
+        std::unique_ptr<MuziTameEditor> ed2 (static_cast<MuziTameEditor*> (proc.createEditor()));
+        ed2->setVisible (true);
+        ed2->benchSetAnalyser (0);
+        juce::Image win (juce::Image::ARGB, ed2->getWidth() * 2, ed2->getHeight() * 2, true, juce::NativeImageType());
+        double total = 0; int frames = 0;
+        for (int f = 0; f < 120; ++f)
+        {
+            for (int b = 0; b < 3; ++b)
+            {
+                buf.copyFrom (0, 0, L.data() + pos, 512); buf.copyFrom (1, 0, L.data() + pos, 512);
+                pos = (pos + 512) % (48000 * 4 - 512);
+                proc.processBlock (buf, midi);
+            }
+            const auto t0 = Clock::now();
+            ed2->benchFrame();
+            juce::Rectangle<int> area;
+            for (auto* c : ed2->animatedParts())
+            {
+                area = area.isEmpty() ? c->getBoundsInParent() : area.getUnion (c->getBoundsInParent());
+                if (auto* cache = ed2->getCachedComponentImage()) cache->invalidate (c->getBoundsInParent());
+            }
+            {
+                juce::Graphics g (win);
+                g.addTransform (juce::AffineTransform::scale (2.0f));
+                g.reduceClipRegion (area);
+                if (auto* cache = ed2->getCachedComponentImage()) cache->paint (g); else ed2->paintEntireComponent (g, true);
+            }
+            if (f >= 20) { total += std::chrono::duration<double, std::milli> (Clock::now() - t0).count(); ++frames; }
+        }
+        std::printf ("| %s | %.2f ms | %.0f %% |\n", native ? "System (CoreGraphics on Mac)" : "Software cache (v0.6.3)", total / frames, total / frames * 3.0);
+    }
     return 0;
 }

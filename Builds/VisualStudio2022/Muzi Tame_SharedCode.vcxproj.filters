@@ -5025,6 +5025,9 @@
     <ClInclude Include="..\..\Source\PluginEditor.h">
       <Filter>Muzi Tame\Source</Filter>
     </ClInclude>
+    <ClInclude Include="..\..\Source\SoftwareCachedImage.h">
+      <Filter>Muzi Tame\Source</Filter>
+    </ClInclude>
     <ClInclude Include="..\..\Source\MuziLookAndFeel.h">
       <Filter>Muzi Tame\Source</Filter>
     </ClInclude>

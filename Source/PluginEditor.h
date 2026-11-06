@@ -112,6 +112,7 @@ public:
     void benchFrame() { timerCallback(); }        // one GUI frame, for the CPU benchmark
     juce::Component& benchDisplay() { return display; }
     void benchSetAnalyser (int q) { setAnalyserQuality (q); }
+    std::vector<juce::Component*> animatedParts() { return { &display, &inMeter, &outMeter }; }
 
 private:
     void timerCallback() override;

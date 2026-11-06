@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 
 <JUCERPROJECT id="KLzdoc" name="Muzi Tame" projectType="audioplug" useAppConfig="0"
-              addUsingNamespaceToJuceHeader="0" jucerFormatVersion="1" version="0.6.2"
+              addUsingNamespaceToJuceHeader="0" jucerFormatVersion="1" version="0.6.3"
               companyName="Muzi" companyCopyright="Edison" bundleIdentifier="com.muzi.muzitame"
               pluginFormats="buildAU,buildStandalone,buildVST3" pluginCharacteristicsValue=""
               pluginName="Muzi Tame" pluginDesc="Automatic resonance suppressor"
@@ -17,6 +17,7 @@
       <FILE id="d6Gncf" name="PluginProcessor.cpp" compile="1" resource="0"
             file="Source/PluginProcessor.cpp"/>
       <FILE id="BAepfJ" name="PluginEditor.h" compile="0" resource="0" file="Source/PluginEditor.h"/>
+      <FILE id="mtSwC1" name="SoftwareCachedImage.h" compile="0" resource="0" file="Source/SoftwareCachedImage.h"/>
       <FILE id="Bd0Kh8" name="PluginEditor.cpp" compile="1" resource="0"
             file="Source/PluginEditor.cpp"/>
       <FILE id="oOOL8d" name="MuziLookAndFeel.h" compile="0" resource="0"

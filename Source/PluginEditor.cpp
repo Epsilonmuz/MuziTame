@@ -1,4 +1,5 @@
 #include "PluginEditor.h"
+#include "SoftwareCachedImage.h"
 
 using namespace muzi::ui;
 using E = muzi::FrankenTameEngine;
@@ -370,6 +371,11 @@ void AnalyzerDisplay::renderStaticLayer (float pixelScale)
 void AnalyzerDisplay::paint (juce::Graphics& g)
 {
     const float pixelScale = juce::jmax (1.0f, g.getInternalContext().getPhysicalPixelScaleFactor());
+    if (dynamic_cast<juce::LowLevelGraphicsSoftwareRenderer*> (&g.getInternalContext()) != nullptr)
+    {
+        paintContent (g, pixelScale);           // already drawing with the software renderer (editor cache)
+        return;
+    }
     const int W = juce::jmax (1, juce::roundToInt ((float) getWidth() * pixelScale));
     const int H = juce::jmax (1, juce::roundToInt ((float) getHeight() * pixelScale));
     // The bitmap is the platform's own image type (so the system can show it without converting it),
@@ -599,6 +605,10 @@ MuziTameEditor::MuziTameEditor (MuziTameProcessor& p)
     analyserBtn.onClick = [this] { setAnalyserQuality ((display.quality + 1) % 3); };
     setAnalyserQuality ((int) proc.apvts.state.getProperty ("analyser", 0));
 
+    // draw through the software cache (set MUZI_NATIVE_RENDER=1 to compare with the system renderer)
+    if (juce::SystemStats::getEnvironmentVariable ("MUZI_NATIVE_RENDER", {}) != "1")
+        setCachedComponentImage (new SoftwareCachedImage (*this));
+
     setResizable (true, true);
     setResizeLimits (720, 450, 1440, 900);
     getConstrainer()->setFixedAspectRatio (kBaseW / kBaseH);
@@ -757,7 +767,7 @@ void MuziTameEditor::paint (juce::Graphics& g)
     g.setFont (font (10.5f * s));
     juce::ignoreUnused (ms);
     g.drawText (footerText(), footer.reduced ((int) (18 * s), 0), juce::Justification::centredLeft);
-    g.drawText ("v0.6.2   |   double-click any control to reset", footer.reduced ((int) (18 * s), 0), juce::Justification::centredRight);
+    g.drawText ("v0.6.3   |   double-click any control to reset", footer.reduced ((int) (18 * s), 0), juce::Justification::centredRight);
 
    #if (defined (__clang__) || defined (__GNUC__)) && ! defined (__OPTIMIZE__)
     // An unoptimised (-O0) build runs the DSP and the analyser several times slower
