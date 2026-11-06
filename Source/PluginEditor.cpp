@@ -601,6 +601,11 @@ MuziTameEditor::MuziTameEditor (MuziTameProcessor& p)
         addAndMakeVisible (c);
     analyserBtn.setTooltip ("Analyser display: Full, Light (half the frame rate) or Off. Lighter settings help older or busy computers. The sound does not change.");
     analyserBtn.onClick = [this] { setAnalyserQuality ((display.quality + 1) % 3); };
+    peakGuardBtn.setClickingTogglesState (true);
+    peakGuardBtn.setTooltip ("Peak Guard: stops the cuts from raising the peak level (they can on distorted 808s, at each new note). "
+                             "Peaks rise at most 0.4 dB. Leave it on unless you want the plain filters.");
+    peakGuardAttachment = std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment> (p.apvts, "peakguard", peakGuardBtn);
+    addAndMakeVisible (peakGuardBtn);
     setAnalyserQuality ((int) proc.apvts.state.getProperty ("analyser", 0));
 
     // v0.6.3 drew the whole window through a software cache; measured on an Intel Mac that cost
@@ -778,7 +783,7 @@ juce::Component* MuziTameEditor::findPart (const juce::String& id)
         { "mix", &mix }, { "trim", &trim }, { "inMeter", &inMeter }, { "outMeter", &outMeter }, { "display", &display },
         { "presetBox", &presetBox }, { "prev", &prevPreset }, { "next", &nextPreset }, { "save", &savePreset },
         { "live", &modeLive }, { "standard", &modeStd }, { "hires", &modeHi }, { "delta", &deltaBtn },
-        { "bypass", &bypassBtn }, { "analyser", &analyserBtn } };
+        { "bypass", &bypassBtn }, { "analyser", &analyserBtn }, { "peakguard", &peakGuardBtn } };
     for (auto& p : parts) if (id == p.first) return p.second;
     return nullptr;
 }
@@ -832,6 +837,7 @@ void MuziTameEditor::resized()
     header = sc (0, 0, kBaseW, 56);
     footer = sc (0, 574, kBaseW, 26);
     analyserBtn.setBounds (sc (kBaseW * 0.5f - 66, 577, 132, 20));
+    peakGuardBtn.setBounds (sc (kBaseW * 0.5f + 74, 577, 104, 20));
 
     prevPreset.setBounds (sc (268, 14, 28, 28));
     presetBox.setBounds (sc (300, 14, 220, 28));

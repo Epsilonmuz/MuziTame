@@ -133,6 +133,7 @@ private:
     std::atomic<float>* trim = nullptr;
     std::atomic<float>* bypass = nullptr;
     std::atomic<float>* punch = nullptr;
+    std::atomic<float>* peakGuard = nullptr;
     juce::AudioProcessorParameter* bypassParam = nullptr;
 
     void pushTap (AudioTap& tap, const juce::AudioBuffer<float>& b, std::atomic<float>& level);

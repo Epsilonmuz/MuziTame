@@ -10,7 +10,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 IMG = "img"
 parts = json.load(open(os.path.join(HERE, IMG, "parts.json")))
 W, H = parts["width"], parts["height"]
-VERSION = "0.8.0"
+VERSION = "0.8.1"
 
 # ------------------------------------------------------------------ numbered overview
 callouts = [  # number, part, label, (dx, dy) offset from the part's top-left, in window pixels
@@ -34,6 +34,7 @@ callouts = [  # number, part, label, (dx, dy) offset from the part's top-left, i
     (18, "trim", "Output", (2, 2)),
     (19, "meters", "IN / OUT meters", (4, -14)),
     (20, "analyser", "Analyser button", (-14, -4)),
+    (21, "peakguard", "Peak Guard", (-14, -4)),
 ]
 
 def badge(n, part, dx, dy):
@@ -148,6 +149,13 @@ knob_cards = "".join([
          "<p>How much the display draws: <b>Full</b>, <b>Light</b> (half the frame rate) or <b>Off</b> (only the cut curve). "
          "Lighter settings help older or busy computers. The sound does not change, and the setting is saved with the session.</p>",
          "Light or Off on a 2019 Intel MacBook Pro with many instances open."),
+    card("peakguard", "Peak Guard", 21, "on / off", "on",
+         "<p>Stops Muzi Tame from raising the <b>peak level</b>. The cuts shift some frequencies very slightly in time. "
+         "On a distorted 808 the harmonics normally line up to make flat-topped waves, and at the start of each new note that shift can knock them out of line. "
+         "The result is a taller peak (up to about +1.8 dB in tests) even though the overall level goes down, which can clip whatever comes after.</p>"
+         "<p>With Peak Guard on, whenever the processed sound would go more than 0.4 dB above the original's peak, Muzi Tame blends a little of the original back in for those few milliseconds. "
+         "The taming stays the same (within a few tenths of a dB in tests), it adds no latency and no distortion.</p>",
+         "leave it on. Switch it off only to hear the plain filters, or if you put a limiter right after anyway."),
 ])
 
 presets = [
@@ -286,6 +294,7 @@ code {{ background: var(--bg); padding: 1px 4px; border-radius: 3px; font-size: 
 <h2>Troubleshooting</h2>
 <p><b>I can hardly hear a difference.</b> That is often right: it only acts on resonances. Turn on DELTA to hear what it removes, raise Depth or lower Threshold, or narrow the range to the problem.</p>
 <p><b>The sound got dull or thin.</b> Lower Depth, raise Threshold, or raise Tonal Guard. Check DELTA: if you hear the instrument's main tone, it is doing too much.</p>
+<p><b>My 808 clips after Muzi Tame.</b> Make sure Peak Guard is on (lit). The 808 preset adds +1 dB Output on purpose; turn Output down if you need the headroom.</p>
 <p><b>The 808 lost weight.</b> Lower Max Cut to 6–9 dB, raise Tonal Guard, or move the LOW handle up to about 40 Hz so the sub is left alone.</p>
 <p><b>Drum hits lost their snap.</b> Raise Punch, or lengthen Attack.</p>
 <p><b>The audio arrives late while recording.</b> Switch to LIVE.</p>

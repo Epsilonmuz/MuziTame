@@ -51,7 +51,7 @@ int main (int argc, char** argv)
 
     juce::DynamicObject::Ptr json = new juce::DynamicObject();
     for (auto* id : { "attack", "release", "punch", "threshold", "depth", "sharpness", "broad", "guard", "maxcut", "mix", "trim",
-                      "presetBox", "prev", "next", "save", "live", "standard", "hires", "delta", "bypass", "analyser", "display" })
+                      "presetBox", "prev", "next", "save", "live", "standard", "hires", "delta", "bypass", "analyser", "peakguard", "display" })
     {
         const auto b = boundsOf (id);
         juce::Array<juce::var> a { b.getX(), b.getY(), b.getWidth(), b.getHeight() };
@@ -72,6 +72,7 @@ int main (int argc, char** argv)
     crop (boundsOf ("delta"), 6, "delta");
     crop (boundsOf ("bypass"), 6, "bypass");
     crop (boundsOf ("analyser"), 4, "analyser");
+    crop (boundsOf ("peakguard"), 4, "peakguard");
     crop (boundsOf ("display"), 0, "display");
     const auto d = boundsOf ("display");
     crop (d.withWidth (d.getWidth() / 3), 0, "range_low");

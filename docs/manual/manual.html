@@ -44,13 +44,13 @@ code { background: var(--bg); padding: 1px 4px; border-radius: 3px; font-size: 9
 
 <div class="cover">
   <div><h1>MUZI TAME</h1><div class="sub">Resonance suppressor · User manual</div></div>
-  <div class="ver">Version 0.8.0<br>VST3 · AU · Standalone</div>
+  <div class="ver">Version 0.8.1<br>VST3 · AU · Standalone</div>
 </div>
 
 <p>Muzi Tame finds harsh, ringing, boomy or boxy frequencies as they happen and turns them down only while they stick out. It is automatic: you tell it how hard, where, and how fast, and it does the rest. This manual shows a picture of every control and explains what it does.</p>
 
-<div class="hero"><img src="img/full.png" alt="Muzi Tame"><span class="badge" style="left:27.29%;top:1.33%">1</span><span class="badge" style="left:57.29%;top:1.33%">2</span><span class="badge" style="left:63.96%;top:1.33%">3</span><span class="badge" style="left:86.46%;top:1.33%">4</span><span class="badge" style="left:94.38%;top:1.33%">5</span><span class="badge" style="left:47.50%;top:30.00%">6</span><span class="badge" style="left:2.29%;top:16.00%">7</span><span class="badge" style="left:2.71%;top:78.00%">8</span><span class="badge" style="left:10.21%;top:78.00%">9</span><span class="badge" style="left:17.71%;top:78.00%">10</span><span class="badge" style="left:27.71%;top:78.00%">11</span><span class="badge" style="left:37.92%;top:66.33%">12</span><span class="badge" style="left:50.83%;top:78.00%">13</span><span class="badge" style="left:61.46%;top:78.00%">14</span><span class="badge" style="left:68.96%;top:78.00%">15</span><span class="badge" style="left:77.50%;top:78.00%">16</span><span class="badge" style="left:86.04%;top:66.00%">17</span><span class="badge" style="left:86.04%;top:80.33%">18</span><span class="badge" style="left:93.54%;top:64.00%">19</span><span class="badge" style="left:41.67%;top:95.50%">20</span></div>
-<ol class="legend"><li><b>1</b> Preset bar</li><li><b>2</b> Save preset</li><li><b>3</b> Mode</li><li><b>4</b> Delta</li><li><b>5</b> Bypass</li><li><b>6</b> Display</li><li><b>7</b> Range handles</li><li><b>8</b> Attack</li><li><b>9</b> Release</li><li><b>10</b> Punch</li><li><b>11</b> Threshold</li><li><b>12</b> Depth</li><li><b>13</b> Sharpness</li><li><b>14</b> Broad</li><li><b>15</b> Tonal Guard</li><li><b>16</b> Max Cut</li><li><b>17</b> Mix</li><li><b>18</b> Output</li><li><b>19</b> IN / OUT meters</li><li><b>20</b> Analyser button</li></ol>
+<div class="hero"><img src="img/full.png" alt="Muzi Tame"><span class="badge" style="left:27.29%;top:1.33%">1</span><span class="badge" style="left:57.29%;top:1.33%">2</span><span class="badge" style="left:63.96%;top:1.33%">3</span><span class="badge" style="left:86.46%;top:1.33%">4</span><span class="badge" style="left:94.38%;top:1.33%">5</span><span class="badge" style="left:47.50%;top:30.00%">6</span><span class="badge" style="left:2.29%;top:16.00%">7</span><span class="badge" style="left:2.71%;top:78.00%">8</span><span class="badge" style="left:10.21%;top:78.00%">9</span><span class="badge" style="left:17.71%;top:78.00%">10</span><span class="badge" style="left:27.71%;top:78.00%">11</span><span class="badge" style="left:37.92%;top:66.33%">12</span><span class="badge" style="left:50.83%;top:78.00%">13</span><span class="badge" style="left:61.46%;top:78.00%">14</span><span class="badge" style="left:68.96%;top:78.00%">15</span><span class="badge" style="left:77.50%;top:78.00%">16</span><span class="badge" style="left:86.04%;top:66.00%">17</span><span class="badge" style="left:86.04%;top:80.33%">18</span><span class="badge" style="left:93.54%;top:64.00%">19</span><span class="badge" style="left:41.67%;top:95.50%">20</span><span class="badge" style="left:56.25%;top:95.50%">21</span></div>
+<ol class="legend"><li><b>1</b> Preset bar</li><li><b>2</b> Save preset</li><li><b>3</b> Mode</li><li><b>4</b> Delta</li><li><b>5</b> Bypass</li><li><b>6</b> Display</li><li><b>7</b> Range handles</li><li><b>8</b> Attack</li><li><b>9</b> Release</li><li><b>10</b> Punch</li><li><b>11</b> Threshold</li><li><b>12</b> Depth</li><li><b>13</b> Sharpness</li><li><b>14</b> Broad</li><li><b>15</b> Tonal Guard</li><li><b>16</b> Max Cut</li><li><b>17</b> Mix</li><li><b>18</b> Output</li><li><b>19</b> IN / OUT meters</li><li><b>20</b> Analyser button</li><li><b>21</b> Peak Guard</li></ol>
 
 <h2>Quick start</h2>
 <ol class="steps">
@@ -260,6 +260,15 @@ code { background: var(--bg); padding: 1px 4px; border-radius: 3px; font-size: 9
     <p class="tip"><b>Try:</b> Light or Off on a 2019 Intel MacBook Pro with many instances open.</p>
   </div>
 </section>
+<section class="card">
+  <div class="pic"><img src="img/peakguard.png" alt="Peak Guard"></div>
+  <div class="txt">
+    <h3><span class="n">21</span>Peak Guard</h3>
+    <div class="meta"><span>Range <b>on / off</b></span><span>Default <b>on</b></span></div>
+    <p>Stops Muzi Tame from raising the <b>peak level</b>. The cuts shift some frequencies very slightly in time. On a distorted 808 the harmonics normally line up to make flat-topped waves, and at the start of each new note that shift can knock them out of line. The result is a taller peak (up to about +1.8 dB in tests) even though the overall level goes down, which can clip whatever comes after.</p><p>With Peak Guard on, whenever the processed sound would go more than 0.4 dB above the original's peak, Muzi Tame blends a little of the original back in for those few milliseconds. The taming stays the same (within a few tenths of a dB in tests), it adds no latency and no distortion.</p>
+    <p class="tip"><b>Try:</b> leave it on. Switch it off only to hear the plain filters, or if you put a limiter right after anyway.</p>
+  </div>
+</section>
 
 <h2>Factory presets</h2>
 <p>Starting points tuned on test signals; adjust by ear on your material. They also appear in your DAW's program list.</p>
@@ -304,6 +313,7 @@ code { background: var(--bg); padding: 1px 4px; border-radius: 3px; font-size: 9
 <h2>Troubleshooting</h2>
 <p><b>I can hardly hear a difference.</b> That is often right: it only acts on resonances. Turn on DELTA to hear what it removes, raise Depth or lower Threshold, or narrow the range to the problem.</p>
 <p><b>The sound got dull or thin.</b> Lower Depth, raise Threshold, or raise Tonal Guard. Check DELTA: if you hear the instrument's main tone, it is doing too much.</p>
+<p><b>My 808 clips after Muzi Tame.</b> Make sure Peak Guard is on (lit). The 808 preset adds +1 dB Output on purpose; turn Output down if you need the headroom.</p>
 <p><b>The 808 lost weight.</b> Lower Max Cut to 6–9 dB, raise Tonal Guard, or move the LOW handle up to about 40 Hz so the sub is left alone.</p>
 <p><b>Drum hits lost their snap.</b> Raise Punch, or lengthen Attack.</p>
 <p><b>The audio arrives late while recording.</b> Switch to LIVE.</p>

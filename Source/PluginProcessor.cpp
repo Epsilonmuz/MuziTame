@@ -171,6 +171,7 @@ APVTS::ParameterLayout MuziTameProcessor::createLayout()
     l.add (std::make_unique<AudioParameterFloat> (ParameterID { "trim", 2 }, "Output", NormalisableRange<float> (-12.0f, 12.0f, 0.1f), 0.0f, db));
     l.add (std::make_unique<AudioParameterBool>  (ParameterID { "bypass", 2 }, "Bypass", false));
     l.add (std::make_unique<AudioParameterFloat> (ParameterID { "punch", 3 }, "Punch", NormalisableRange<float> (0.0f, 100.0f, 0.1f), 50.0f, pct));
+    l.add (std::make_unique<AudioParameterBool>  (ParameterID { "peakguard", 4 }, "Peak Guard", true));
     return l;
 }
 
@@ -196,6 +197,7 @@ MuziTameProcessor::MuziTameProcessor()
     trim        = apvts.getRawParameterValue ("trim");
     bypass      = apvts.getRawParameterValue ("bypass");
     punch       = apvts.getRawParameterValue ("punch");
+    peakGuard   = apvts.getRawParameterValue ("peakguard");
     bypassParam = apvts.getParameter ("bypass");
     takePresetSnapshot();
 }
@@ -286,6 +288,7 @@ void MuziTameProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::Mi
     p.maxCutDb      = maxCut->load();
     p.mix           = bypassed ? 0.0f : mix->load() / 100.0f;   // bypass keeps the latency
     p.delta         = ! bypassed && delta->load() > 0.5f;
+    p.peakGuard     = peakGuard->load() > 0.5f;
     p.lowHz         = juce::jmin (lowHz->load(), highHz->load());
     p.highHz        = juce::jmax (lowHz->load(), highHz->load());
 

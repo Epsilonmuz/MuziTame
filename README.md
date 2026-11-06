@@ -1,8 +1,14 @@
-# Muzi Tame v0.8.0 — FrankenTame engine
+# Muzi Tame v0.8.1 — FrankenTame engine
 
 Automatic resonance suppressor (JUCE, VST3 / AU / Standalone). Full user guide: `Muzi Tame Manual.pdf`.
 
 ![Muzi Tame](screenshot.png)
+
+## What's new in v0.8.1 (Peak Guard)
+- **Peak Guard** (footer button, on by default). On distorted 808s the cuts could raise the peak level by up to 1.8 dB while the overall level dropped, mostly in the first 30 ms of each new note. Cause: the minimum-phase cuts shift some harmonics slightly in time, so the 808's lined-up harmonics stack higher at the attack. (Easing the low cuts during attacks was tried and only got +1.8 to +1.5 dB, at the cost of taming.)
+  - When the processed sample would go more than 0.4 dB above the original's recent peak, the engine blends back towards the original just enough, at once, then lets go over 10 ms.
+  - Measured (Standard / Live / High-res): 808 peak +1.8 / +1.7 / +1.6 dB → +0.4 dB. Taming kept: 165 Hz box resonance −4.6 → −4.5 dB, note spread unchanged, planted 2.6/5.4 kHz cuts unchanged. No added high-frequency content, no latency.
+  - Old sessions open with Peak Guard on.
 
 ## What's new in v0.8.0 (your own presets)
 - **Save your own presets.** The new **SAVE** button stores the knobs and range handles as a preset. Your presets appear under **Your presets** in the preset menu of every Muzi Tame, in any session or DAW, and the < > arrows step through factory and your own.
@@ -108,6 +114,7 @@ CMake alternative: `cmake -B build -DCMAKE_BUILD_TYPE=Release && cmake --build b
 | Output | Output trim | 0 dB |
 | Low / High Limit | Processing range (drag handles in the display) | 20 Hz / 20 kHz |
 | Delta | Hear only what is removed | off |
+| Peak Guard | Keeps the cuts from raising peaks (max +0.4 dB) | on |
 | Bypass | Power button; keeps latency | off |
 | Presets | Factory and your own; < > step through both; SAVE stores the current settings | Default |
 

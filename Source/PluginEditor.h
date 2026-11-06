@@ -158,12 +158,12 @@ public:
     void showSaveDialogForSnapshot (const juce::String& name) { showSaveDialog(); if (dialog) dialog->getTextEditor ("name")->setText (name); }
     juce::Component* dialogForSnapshot() { return dialog.get(); }
 private:
-    juce::TextButton modeLive { "LIVE" }, modeStd { "STANDARD" }, modeHi { "HI-RES" }, deltaBtn { "DELTA" }, analyserBtn;
+    juce::TextButton modeLive { "LIVE" }, modeStd { "STANDARD" }, modeHi { "HI-RES" }, deltaBtn { "DELTA" }, analyserBtn, peakGuardBtn { "PEAK GUARD" };
     int frameCount = 0;
     void setAnalyserQuality (int q);
     PowerButton bypassBtn;
     std::unique_ptr<juce::ParameterAttachment> modeAttachment;
-    std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment> deltaAttachment, bypassAttachment;
+    std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment> deltaAttachment, bypassAttachment, peakGuardAttachment;
 
     juce::Rectangle<int> panelDyn, panelTame, panelChar, panelOut, header, footer;
     juce::String footerText() const;
