@@ -21,7 +21,7 @@ Everything is inside this folder, including JUCE 9.0.5 (in `JUCE/`), so nothing 
 3. In Xcode choose the scheme **Muzi Tame - All**, then Product > Build (a Release build runs lightest).
 4. Xcode copies the plugin to `~/Library/Audio/Plug-Ins/VST3/` and `Components/` (AU). Rescan in your DAW.
 
-You can also open `Builds/MacOSX/Muzi Tame.xcodeproj` directly. JUCE 9.0.5, macOS 12.0 target, Universal (Apple Silicon + Intel), VST3 + AU + Standalone. Windows: `Builds/VisualStudio2022`.
+You can also open `Builds/MacOSX/Muzi Tame.xcodeproj` directly. JUCE 9.0.5, macOS 12.0 target, Apple Silicon + Intel (Xcode standard architectures), VST3 + AU + Standalone. Windows: `Builds/VisualStudio2022`.
 Plugin ID is unchanged (Muzi / MzTm), so sessions that already use Muzi Tame keep loading it.
 
 CMake alternative: `cmake -B build -DCMAKE_BUILD_TYPE=Release && cmake --build build --config Release` (downloads JUCE 9.0.5).

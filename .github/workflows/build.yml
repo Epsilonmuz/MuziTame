@@ -18,7 +18,7 @@ jobs:
         run: |
           xcodebuild -project "Builds/MacOSX/Muzi Tame.xcodeproj" \
                      -target "Muzi Tame - All" -configuration Release \
-                     CODE_SIGN_IDENTITY="-" -quiet build
+                     ARCHS="arm64 x86_64" ONLY_ACTIVE_ARCH=NO CODE_SIGN_IDENTITY="-" -quiet build
 
       - name: Validate with pluginval
         run: |
