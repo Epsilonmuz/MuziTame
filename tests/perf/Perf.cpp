@@ -33,9 +33,10 @@ std::vector<float> musicLike (double fs, int n, int channel)
 
 struct Result { double avg, p99, p999, worst; int over50, over100, blocks; };
 
-Result runAudio (double fs, int mode, int block)
+Result runAudio (double fs, int mode, int block, bool offline = false)
 {
     MuziTameProcessor proc;
+    proc.setNonRealtime (offline);
     auto* modeParam = proc.apvts.getParameter ("mode");
     modeParam->setValueNotifyingHost (modeParam->convertTo0to1 ((float) mode));
     proc.setPlayConfigDetails (2, 2, fs, block);
@@ -72,7 +73,10 @@ int main()
 {
     juce::ScopedJuceInitialiser_GUI init;
     const char* modeName[] = { "Standard", "High-res", "Live" };
-    std::printf ("## Audio: share of each block's real-time budget (over 100 %% = dropout)\n\n");
+    const bool skipAudio = std::getenv ("MUZI_PERF_SKIP_AUDIO") != nullptr;
+    if (! skipAudio) {
+    std::printf ("## Audio thread: share of each block's real-time budget (over 100 %% = dropout)\n\n");
+    std::printf ("Real-time playback: the analysis runs on its own worker thread (see the next table).\n\n");
     std::printf ("| Rate | Mode | Buffer | Average | 99th pct | 99.9th pct | Worst | Blocks over 50 %% / 100 %% |\n|---|---|---|---|---|---|---|---|\n");
     for (double fs : { 44100.0, 48000.0, 96000.0 })
         for (int mode = 0; mode < 3; ++mode)
@@ -84,6 +88,16 @@ int main()
                              fs / 1000.0, modeName[mode], block, r.avg, r.p99, r.p999, r.worst, r.over50, r.over100, r.blocks);
                 std::fflush (stdout);
             }
+
+    // the analysis itself, which in real time runs on the worker thread next to the audio thread
+    std::printf ("\n## Analysis worker: CPU per instance (share of one core), 48 kHz\n\n| Mode | Audio thread | Analysis worker | Total |\n|---|---|---|---|\n");
+    for (int mode = 0; mode < 3; ++mode)
+    {
+        const auto rt = runAudio (48000.0, mode, 256);
+        const auto off = runAudio (48000.0, mode, 256, true);       // offline: everything on one thread
+        std::printf ("| %s | %.1f %% | %.1f %% | %.1f %% |\n", modeName[mode], rt.avg, std::max (0.0, off.avg - rt.avg), off.avg);
+    }
+    }
 
     // ---------------------------------------------------------------- display
     MuziTameProcessor proc;
@@ -114,7 +128,7 @@ int main()
                 proc.processBlock (buf, midi);
             }
             const auto t0 = Clock::now();
-            ed->benchFrame();
+            ed->benchFrame(); ed->benchFrame();                  // the 60 Hz timer: analyser tick + meter tick
             const auto t1 = Clock::now();
             tUpd += std::chrono::duration<double, std::milli> (t1 - t0).count();
             if (f % every == 0)
@@ -130,43 +144,52 @@ int main()
     }
 
     // ---------------------------------------------------------------- whole window, as macOS asks for it
-    // macOS merges a window's changed areas into one rectangle, so it asks for the bounding box of
-    // the analyser and the meters: almost the whole window, knobs included.
-    std::printf ("\n## Whole window per frame (analyser Full), as macOS merges the changed areas\n\n");
-    std::printf ("| Renderer | Per frame | Share of one core at 30 fps |\n|---|---|---|\n");
-    for (int native = 1; native >= 0; --native)
+    // macOS merges the areas that change in one frame into one rectangle. When the analyser and
+    // the meters change together it asks for their bounding box: almost the whole window,
+    // knobs included. v0.7 lets them take turns on a 60 Hz timer, so each request is small.
+    std::printf ("\n## Whole window, analyser Full: main-thread work per second of display\n\n");
+    std::printf ("| Redraw | Per second | Share of one core |\n|---|---|---|\n");
+    for (int variant = 0; variant < 3; ++variant)      // 0: together, system renderer; 1: together, v0.6.3 cache; 2: taking turns (v0.7)
     {
-        setenv ("MUZI_NATIVE_RENDER", native ? "1" : "0", 1);
+        setenv ("MUZI_SOFTWARE_CACHE", variant == 1 ? "1" : "0", 1);
         std::unique_ptr<MuziTameEditor> ed2 (static_cast<MuziTameEditor*> (proc.createEditor()));
         ed2->setVisible (true);
         ed2->benchSetAnalyser (0);
         juce::Image win (juce::Image::ARGB, ed2->getWidth() * 2, ed2->getHeight() * 2, true, juce::NativeImageType());
-        double total = 0; int frames = 0;
-        for (int f = 0; f < 120; ++f)
+        auto parts = ed2->animatedParts();
+        double total = 0; int ticks = 0;
+        for (int f = 0; f < 240; ++f)                  // 60 Hz ticks, 4 s
         {
-            for (int b = 0; b < 3; ++b)
-            {
-                buf.copyFrom (0, 0, L.data() + pos, 512); buf.copyFrom (1, 0, L.data() + pos, 512);
-                pos = (pos + 512) % (48000 * 4 - 512);
-                proc.processBlock (buf, midi);
-            }
+            if ((f & 1) == 0)
+                for (int b = 0; b < 3; ++b)
+                {
+                    buf.copyFrom (0, 0, L.data() + pos, 512); buf.copyFrom (1, 0, L.data() + pos, 512);
+                    pos = (pos + 512) % (48000 * 4 - 512);
+                    proc.processBlock (buf, midi);
+                }
             const auto t0 = Clock::now();
             ed2->benchFrame();
+            // which parts asked to be redrawn on this tick (v0.7: one per tick; before: all on every 30 Hz frame)
             juce::Rectangle<int> area;
-            for (auto* c : ed2->animatedParts())
+            for (auto* c : parts)
             {
+                const bool changed = variant == 2 ? (c == parts[0]) == ((f & 1) == 0) : (f & 1) == 0;
+                if (! changed) continue;
                 area = area.isEmpty() ? c->getBoundsInParent() : area.getUnion (c->getBoundsInParent());
                 if (auto* cache = ed2->getCachedComponentImage()) cache->invalidate (c->getBoundsInParent());
             }
+            if (! area.isEmpty())
             {
                 juce::Graphics g (win);
                 g.addTransform (juce::AffineTransform::scale (2.0f));
                 g.reduceClipRegion (area);
                 if (auto* cache = ed2->getCachedComponentImage()) cache->paint (g); else ed2->paintEntireComponent (g, true);
             }
-            if (f >= 20) { total += std::chrono::duration<double, std::milli> (Clock::now() - t0).count(); ++frames; }
+            if (f >= 40) { total += std::chrono::duration<double, std::milli> (Clock::now() - t0).count(); ++ticks; }
         }
-        std::printf ("| %s | %.2f ms | %.0f %% |\n", native ? "System (CoreGraphics on Mac)" : "Software cache (v0.6.3)", total / frames, total / frames * 3.0);
+        const double perSecond = total / (ticks / 60.0);
+        const char* name[] = { "All at once, system renderer (v0.6.2)", "All at once, software cache (v0.6.3)", "Taking turns, system renderer (v0.7)" };
+        std::printf ("| %s | %.0f ms | %.1f %% |\n", name[variant], perSecond, perSecond / 10.0);
     }
     return 0;
 }

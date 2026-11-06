@@ -36,10 +36,10 @@ class MuziTameProcessor : public juce::AudioProcessor
 {
 public:
     MuziTameProcessor();
-    ~MuziTameProcessor() override = default;
+    ~MuziTameProcessor() override;
 
     void prepareToPlay (double sampleRate, int samplesPerBlock) override;
-    void releaseResources() override {}
+    void releaseResources() override;
     bool isBusesLayoutSupported (const BusesLayout& layouts) const override;
     void processBlock (juce::AudioBuffer<float>&, juce::MidiBuffer&) override;
     using AudioProcessor::processBlock;
@@ -81,6 +81,26 @@ public:
 
 private:
     std::array<muzi::FrankenTameEngine, 3> engines;   // Standard, High-res, Live
+
+    // Runs the spectral analysis next to the audio thread, so each audio block only pays for
+    // the filters: a flat, small cost per block at any buffer size (no spikes, no dropouts).
+    struct AnalysisWorker : juce::Thread
+    {
+        explicit AnalysisWorker (MuziTameProcessor& o) : juce::Thread ("Muzi Tame analysis"), owner (o) {}
+        void run() override
+        {
+            while (! threadShouldExit())
+            {
+                int hops = 0;
+                for (auto& e : owner.engines) hops += e.serviceAnalysis();
+                if (hops == 0) wait (1);          // new audio arrives every few ms
+            }
+        }
+        MuziTameProcessor& owner;
+    };
+    AnalysisWorker worker { *this };
+    void startWorker();
+    void stopWorker();
     std::atomic<int> activeMode { 0 };
     double currentRate = 48000.0;
     juce::SmoothedValue<float, juce::ValueSmoothingTypes::Multiplicative> trimGain;

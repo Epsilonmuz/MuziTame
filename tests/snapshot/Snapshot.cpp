@@ -9,6 +9,7 @@ int main (int argc, char** argv)
     juce::ScopedJuceInitialiser_GUI init;
     MuziTameProcessor proc;
     proc.setPlayConfigDetails (2, 2, 48000.0, 512);
+    proc.setNonRealtime (true);
     proc.prepareToPlay (48000.0, 512);
     juce::AudioFormatManager afm; afm.registerBasicFormats();
     std::unique_ptr<juce::AudioFormatReader> rd (afm.createReaderFor (juce::File (juce::String (argv[1]))));

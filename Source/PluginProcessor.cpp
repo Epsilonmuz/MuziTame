@@ -103,8 +103,25 @@ bool MuziTameProcessor::isBusesLayoutSupported (const BusesLayout& layouts) cons
     return layouts.getMainInputChannelSet() == out;
 }
 
+MuziTameProcessor::~MuziTameProcessor() { stopWorker(); }
+
+void MuziTameProcessor::startWorker()
+{
+    if (! worker.isThreadRunning())
+        worker.startThread (juce::Thread::Priority::high);
+}
+
+void MuziTameProcessor::stopWorker()
+{
+    for (auto& e : engines) e.setThreadedAnalysis (false);
+    worker.stopThread (2000);
+}
+
+void MuziTameProcessor::releaseResources() { stopWorker(); }
+
 void MuziTameProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
 {
+    stopWorker();                                  // prepare() reallocates: no analysis may run meanwhile
     currentRate = sampleRate;
     const int ch = juce::jmax (1, getTotalNumOutputChannels());
     engines[0].prepare (sampleRate, ch, 0);        // allocation happens here, never in processBlock
@@ -116,6 +133,7 @@ void MuziTameProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
     trimGain.reset (sampleRate, 0.05);
     trimGain.setCurrentAndTargetValue (juce::Decibels::decibelsToGain (trim->load()));
     monoScratch.assign ((size_t) juce::jmax (samplesPerBlock, 8192), 0.0f);
+    startWorker();
 }
 
 void MuziTameProcessor::pushTap (AudioTap& tap, const juce::AudioBuffer<float>& b, std::atomic<float>& level)
@@ -167,6 +185,8 @@ void MuziTameProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::Mi
     p.highHz        = juce::jmax (lowHz->load(), highHz->load());
 
     auto& eng = engines[(size_t) m];
+    // real time: analysis on the worker; offline bounces: on this thread, sample-exact
+    eng.setThreadedAnalysis (! isNonRealtime() && worker.isThreadRunning());
     eng.setParams (p);
     eng.process (buffer.getArrayOfWritePointers(), buffer.getNumSamples());
 

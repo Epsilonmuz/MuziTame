@@ -452,9 +452,9 @@ void AnalyzerDisplay::paintContent (juce::Graphics& g, float pixelScale)
         g.setGradientFill (cg);
         g.fillPath (cutFill);
         g.setColour (col::accent.withAlpha (0.22f));
-        g.strokePath (cutLine, juce::PathStrokeType (6.0f * ts, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
+        g.strokePath (cutLine, juce::PathStrokeType (6.0f * ts, juce::PathStrokeType::beveled));
         g.setColour (col::accent);
-        g.strokePath (cutLine, juce::PathStrokeType (2.0f * ts, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
+        g.strokePath (cutLine, juce::PathStrokeType (2.0f * ts, juce::PathStrokeType::beveled));
 
         juce::Path broadLine;
         for (int c = 0; c < n; c = (c + 2 < n || c == n - 1) ? c + 2 : n - 1)
@@ -605,15 +605,16 @@ MuziTameEditor::MuziTameEditor (MuziTameProcessor& p)
     analyserBtn.onClick = [this] { setAnalyserQuality ((display.quality + 1) % 3); };
     setAnalyserQuality ((int) proc.apvts.state.getProperty ("analyser", 0));
 
-    // draw through the software cache (set MUZI_NATIVE_RENDER=1 to compare with the system renderer)
-    if (juce::SystemStats::getEnvironmentVariable ("MUZI_NATIVE_RENDER", {}) != "1")
+    // v0.6.3 drew the whole window through a software cache; measured on an Intel Mac that cost
+    // more than it saved, so it is off (MUZI_SOFTWARE_CACHE=1 brings it back for comparison)
+    if (juce::SystemStats::getEnvironmentVariable ("MUZI_SOFTWARE_CACHE", {}) == "1")
         setCachedComponentImage (new SoftwareCachedImage (*this));
 
     setResizable (true, true);
     setResizeLimits (720, 450, 1440, 900);
     getConstrainer()->setFixedAspectRatio (kBaseW / kBaseH);
     setSize ((int) kBaseW, (int) kBaseH);
-    startTimerHz (30);
+    startTimerHz (60);
 }
 
 MuziTameEditor::~MuziTameEditor()
@@ -637,10 +638,18 @@ void MuziTameEditor::setAnalyserQuality (int q)
 
 void MuziTameEditor::timerCallback()
 {
-    // Full redraws at 30 fps, Light at 15 fps, Off shows only the cut curve at 10 fps
+    // The timer runs at 60 Hz and the analyser and the meters take turns, each at 30 fps.
+    // If both changed in the same frame, macOS would merge them into one rectangle and
+    // redraw everything between them (every knob) each frame; taking turns, it redraws
+    // only the part that changed.
     ++frameCount;
-    const int every = display.quality == 0 ? 1 : display.quality == 1 ? 2 : 3;
-    if (frameCount % every == 0) display.update();
+    if ((frameCount & 1) == 0)
+    {
+        // Full redraws at 30 fps, Light at 15 fps, Off shows only the cut curve at 10 fps
+        const int every = display.quality == 0 ? 1 : display.quality == 1 ? 2 : 3;
+        if ((frameCount / 2) % every == 0) display.update();
+        return;
+    }
     inMeter.tick();
     outMeter.tick();
     if (presetBox.getSelectedItemIndex() != proc.currentPreset) refreshPresetBox();
@@ -767,7 +776,7 @@ void MuziTameEditor::paint (juce::Graphics& g)
     g.setFont (font (10.5f * s));
     juce::ignoreUnused (ms);
     g.drawText (footerText(), footer.reduced ((int) (18 * s), 0), juce::Justification::centredLeft);
-    g.drawText ("v0.6.3   |   double-click any control to reset", footer.reduced ((int) (18 * s), 0), juce::Justification::centredRight);
+    g.drawText ("v0.7.0   |   double-click any control to reset", footer.reduced ((int) (18 * s), 0), juce::Justification::centredRight);
 
    #if (defined (__clang__) || defined (__GNUC__)) && ! defined (__OPTIMIZE__)
     // An unoptimised (-O0) build runs the DSP and the analyser several times slower

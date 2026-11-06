@@ -1,8 +1,19 @@
-# Muzi Tame v0.6.2 — FrankenTame engine
+# Muzi Tame v0.7.0 — FrankenTame engine
 
 Automatic resonance suppressor (JUCE, VST3 / AU / Standalone). Full user guide: `Muzi Tame Manual.pdf`.
 
 ![Muzi Tame](screenshot.png)
+
+## What's new in v0.7.0 (rebuilt for smooth real-time use)
+Same sound. Measured on GitHub's Intel Mac (the same chip generation as a 2019 MacBook Pro), v0.6.3 still had audio blocks running past their deadline at 128-sample buffers, and the window redraw cost about half a CPU core.
+- **The analysis has its own thread.** The heavy part (spectra, note detection, deciding the cuts) used to run inside the audio callback, so some blocks cost several times others and small buffers dropped out. It now runs on a worker thread next to the audio. The audio thread only runs the filters: a small, flat cost per block at any buffer size.
+  - Offline bounces still run everything on one thread, sample-exact, so renders are identical to v0.6.3.
+  - In real time the cuts are worked out a few milliseconds later than before (within 0.3 dB on the test material). If the computer is badly overloaded the cuts lag behind, but the audio never stops.
+- **Lighter window.**
+  - The analyser and the meters now take turns (60 Hz timer, each at 30 fps). macOS merges areas that change in the same frame, so before this every knob between them was redrawn 30 times a second.
+  - The v0.6.3 whole-window software cache made things slower on Intel and is gone.
+  - The cut curve's glow is drawn with cheaper joins.
+- `tests/perf` now reports the audio thread and the analysis worker separately, and compares the window redraw strategies.
 
 ## What's new in v0.6.2 (the real cause of the lag)
 - **Xcode's Debug build was unoptimised (-O0).** Opening the .jucer in Xcode and pressing Build or Run builds the *Debug* configuration, and that had optimisation switched off. Every speed test so far measured Release, so they never saw it. Measured on the same engine: -O0 costs about 3.5x the CPU of -O3 on average, and single audio blocks regularly ran past their real-time deadline (dropouts). The analyser drawing gets the same penalty, which is what made the whole Mac stutter.

@@ -29,7 +29,7 @@ int main()
             proc.processBlock (buf, midi);
         }
         auto t0 = std::chrono::steady_clock::now();
-        ed->benchFrame();
+        ed->benchFrame(); ed->benchFrame();         // 60 Hz timer: analyser tick + meter tick
         auto t1 = std::chrono::steady_clock::now();
         { juce::Graphics g (img); g.addTransform (juce::AffineTransform::scale (2.0f)); ed->paintEntireComponent (g, true); }
         auto t2 = std::chrono::steady_clock::now();

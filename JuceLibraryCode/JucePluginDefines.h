@@ -77,13 +77,13 @@
  #define JucePlugin_EditorRequiresKeyboardFocus  0
 #endif
 #ifndef  JucePlugin_Version
- #define JucePlugin_Version                0.6.3
+ #define JucePlugin_Version                0.7.0
 #endif
 #ifndef  JucePlugin_VersionCode
- #define JucePlugin_VersionCode            0x603
+ #define JucePlugin_VersionCode            0x700
 #endif
 #ifndef  JucePlugin_VersionString
- #define JucePlugin_VersionString          "0.6.3"
+ #define JucePlugin_VersionString          "0.7.0"
 #endif
 #ifndef  JucePlugin_VSTUniqueID
  #define JucePlugin_VSTUniqueID            JucePlugin_PluginCode
@@ -158,7 +158,7 @@
  #define JucePlugin_ARAFactoryID           "com.Muzi.MuziTame.factory"
 #endif
 #ifndef  JucePlugin_ARADocumentArchiveID
- #define JucePlugin_ARADocumentArchiveID   "com.Muzi.MuziTame.aradocumentarchive.0.6.3"
+ #define JucePlugin_ARADocumentArchiveID   "com.Muzi.MuziTame.aradocumentarchive.0.7.0"
 #endif
 #ifndef  JucePlugin_ARACompatibleArchiveIDs
  #define JucePlugin_ARACompatibleArchiveIDs  ""

@@ -50,6 +50,7 @@
 #include <cstdint>
 #include <complex>
 #include <memory>
+#include <mutex>
 #include <vector>
 #if defined(MUZI_USE_JUCE_FFT) && MUZI_USE_JUCE_FFT
  #include <juce_dsp/juce_dsp.h>
@@ -263,29 +264,50 @@ public:
         for (int c = 0; c < nch; ++c) dl[c].assign (std::max (delay, 1), 0.0f);
         trRing.assign (std::max (delay, 1), 0.0f);
         lead = std::min (delay - 1, 64 * scale);           // -1 when there is no look-ahead (Live)
-        reset();
+
+        // hand-over between the audio thread and the analysis (prepare() runs with no worker active)
+        pend.assign ((size_t) hop, 0.0);
+        fifo.assign ((size_t) kFifo, 0.0);
+        fifoW.store (0); fifoR = 0; lastReadSeen.store (0);
+        resetEpoch.store (0); resetReadPos.store (0); analysisEpoch = 0; audioEpoch = 0;
+        pubSeq.store (0); pubEpoch.store (-1);
+        { FrankenParams d; publishParams (d); aprm = d; }
+        resetAudio();
+        resetAnalysis();
     }
 
+    // Real-time hosts: the spectral analysis runs on a worker thread that calls serviceAnalysis(),
+    // so the audio thread only runs the filters and its cost per block stays small and flat,
+    // whatever the host buffer size. Off (the default, and for offline renders) the audio
+    // thread runs the analysis itself, sample-exact and deterministic.
+    void setThreadedAnalysis (bool on) { threaded.store (on, std::memory_order_relaxed); }
+    bool isThreadedAnalysis() const { return threaded.load (std::memory_order_relaxed); }
+
+    // Worker thread: analyses every complete hop that has arrived. Never blocks.
+    int serviceAnalysis()
+    {
+        std::unique_lock<std::mutex> lock (analysisMutex, std::try_to_lock);
+        if (! lock.owns_lock()) return 0;
+        return drainAndAnalyse();
+    }
+
+    // Audio thread (between blocks): restart from silence. In threaded mode the worker resets
+    // its own state when it next runs; results computed before the reset are ignored.
     void reset()
     {
-        std::fill (ring.begin(), ring.end(), 0.0);
+        resetAudio();
+        resetReadPos.store (fifoW.load (std::memory_order_relaxed), std::memory_order_relaxed);
+        audioEpoch = resetEpoch.load (std::memory_order_relaxed) + 1;
+        resetEpoch.store (audioEpoch, std::memory_order_release);
+    }
+
+private:
+    void resetAudio()
+    {
         for (int c = 0; c < nch; ++c) std::fill (dl[c].begin(), dl[c].end(), 0.0f);
         std::fill (trRing.begin(), trRing.end(), 0.0f);
-        ringPos = dlPos = hopCount = ctrlCount = hopIndex = 0;
-        for (Spec* s : { &A, &L })
-        {
-            s->init = false;
-            std::fill (s->occ.begin(), s->occ.end(), 0.0);
-            std::fill (s->prot.begin(), s->prot.end(), 0.0);
-            std::fill (s->harm.begin(), s->harm.end(), 0.0);
-        }
-        pitchF0 = 100.0; pitchConf = 0.0; nF0 = 0; nF0L = 0;
-        Lp.ready = false;
+        dlPos = hopCount = ctrlCount = npend = 0;
         envFast = envSlow = transient = 0.0;
-        for (int i = 0; i < kNarrow; ++i) { grN[i] = 0; fqN[i] = regC[i]; }
-        for (int i = 0; i < kBands; ++i) grB[i] = 0;
-        for (int i = 0; i < kNarrow; ++i) { meterGainN[i] = 0.0f; meterFreqN[i] = (float) regC[i]; }
-        for (int i = 0; i < kBroad; ++i) meterGainB[i] = 0.0f;
         for (int f = 0; f < kFilters; ++f)
         {
             gStart[f] = gEnd[f] = 0;
@@ -297,6 +319,26 @@ public:
         updateCoeffs();
     }
 
+    void resetAnalysis()
+    {
+        std::fill (ring.begin(), ring.end(), 0.0);
+        ringPos = aHopCount = hopIndex = 0;
+        for (Spec* s : { &A, &L })
+        {
+            s->init = false;
+            std::fill (s->occ.begin(), s->occ.end(), 0.0);
+            std::fill (s->prot.begin(), s->prot.end(), 0.0);
+            std::fill (s->harm.begin(), s->harm.end(), 0.0);
+        }
+        pitchF0 = 100.0; pitchConf = 0.0; nF0 = 0; nF0L = 0;
+        Lp.ready = false;
+        for (int i = 0; i < kNarrow; ++i) { grN[i] = 0; fqN[i] = regC[i]; }
+        for (int i = 0; i < kBands; ++i) grB[i] = 0;
+        for (int i = 0; i < kNarrow; ++i) { meterGainN[i] = 0.0f; meterFreqN[i] = (float) regC[i]; }
+        for (int i = 0; i < kBroad; ++i) meterGainB[i] = 0.0f;
+    }
+
+public:
     int getLatencySamples() const { return delay; }
     double getBroadFc (int j) const { return fcB[j]; }
     double getBroadQ (int j) const { return qB[j]; }
@@ -313,21 +355,25 @@ public:
     //   Standard  (2048-pt):  1536 samples = 32 ms latency, 29 ms attack
     //   High-res  (4096-pt):  4352 samples = 91 ms latency,  8 ms attack
     static int defaultDelay (bool highRes) { return highRes ? 4352 : 1536; }
-    void setParams (const FrankenParams& p) { prm = p; }
+    void setParams (const FrankenParams& p) { prm = p; publishParams (p); }
 
     // block-based, in place, any block size
     void process (float* const* ch, int numSamples)
     {
+        // Inline analysis (offline renders, tests): this thread runs it, holding the lock so a
+        // worker can never touch the analysis at the same time. Threaded: never locks.
+        const bool thr = threaded.load (std::memory_order_relaxed);
+        std::unique_lock<std::mutex> inlineLock (analysisMutex, std::defer_lock);
+        if (! thr) inlineLock.lock();
+
         const double aFa = tc (0.3), aFr = tc (8.0), aSa = tc (40.0), aSr = tc (150.0);
         const double aTa = tc (0.3), aTr = tc (60.0);
-        const int R = (int) ring.size();
         for (int i = 0; i < numSamples; ++i)
         {
             double m = 0.0;
             for (int c = 0; c < nch; ++c) m += ch[c][i];
             m /= nch;
-            ring[ringPos] = m;
-            ringPos = (ringPos + 1) % R;
+            pend[(size_t) npend++] = m;
 
             // transient detector on the incoming (future) audio
             const double a = std::abs (m);
@@ -339,7 +385,13 @@ public:
             if (delay > 0 && lead >= 0) { ahead = trRing[(size_t) ((dlPos + lead) % delay)]; trRing[(size_t) dlPos] = amt; }
             transient = ahead > transient ? aTa * transient + (1 - aTa) * ahead : aTr * transient + (1 - aTr) * ahead;
 
-            if (++hopCount == hop) { hopCount = 0; analyse(); }
+            if (++hopCount == hop)
+            {
+                hopCount = 0;
+                flushPending();
+                if (! thr) drainAndAnalyse();    // inline: analysed at exactly this sample, as before
+                adoptTargets();                  // threaded: the newest results the worker has published
+            }
             if (++ctrlCount >= kCtrl) { ctrlCount = 0; updateCoeffs(); }
             rampPos = std::min (rampPos + 1, hop);
 
@@ -366,12 +418,148 @@ public:
             }
             if (delay > 0) dlPos = (dlPos + 1) % delay;
         }
+        flushPending();                          // so the worker can start on this block's audio now
     }
 
-    // for meters / GUI (written on the audio thread, read anywhere)
+    // for meters / GUI (written by the analysis, read anywhere)
     std::atomic<float> meterGainN[kNarrow], meterFreqN[kNarrow], meterGainB[kBroad];
+    // samples the worker could not keep up with (diagnostics; stays 0 in normal use)
+    std::atomic<int> droppedSamples { 0 };
 
 private:
+    // ---------------- audio thread <-> analysis hand-over (lock-free, no allocation)
+    static constexpr int kFifo = 1 << 15;
+    std::atomic<bool> threaded { false };
+    std::mutex analysisMutex;                    // worker: try_lock only; audio thread: only when inline
+    std::vector<double> pend, fifo;              // pend: this hop's mid samples (audio thread)
+    int npend = 0;
+    std::atomic<uint32_t> fifoW { 0 };           // written by the audio thread (wraps harmlessly)
+    uint32_t fifoR = 0;                          // analysis side
+    std::atomic<int> resetEpoch { 0 };
+    std::atomic<uint32_t> resetReadPos { 0 };
+    int analysisEpoch = 0, audioEpoch = 0;
+
+    void flushPending()
+    {
+        if (npend == 0) return;
+        const uint32_t w = fifoW.load (std::memory_order_relaxed);
+        const uint32_t r = lastReadSeen.load (std::memory_order_acquire);
+        if ((uint32_t) (kFifo - 1) - (w - r) < (uint32_t) npend)        // the worker has fallen far behind: drop, never block
+        {
+            droppedSamples.fetch_add (npend, std::memory_order_relaxed);
+            npend = 0;
+            return;
+        }
+        for (int k = 0; k < npend; ++k) fifo[(size_t) ((w + (uint32_t) k) & (uint32_t) (kFifo - 1))] = pend[(size_t) k];
+        fifoW.store (w + (uint32_t) npend, std::memory_order_release);
+        npend = 0;
+    }
+    std::atomic<uint32_t> lastReadSeen { 0 };
+
+    int drainAndAnalyse()
+    {
+        const int ep = resetEpoch.load (std::memory_order_acquire);
+        if (ep != analysisEpoch)
+        {
+            analysisEpoch = ep;
+            fifoR = resetReadPos.load (std::memory_order_relaxed);   // audio from before the reset is stale
+            resetAnalysis();
+        }
+        const uint32_t w = fifoW.load (std::memory_order_acquire);
+        const int R = (int) ring.size();
+        int hops = 0;
+        while (fifoR != w)
+        {
+            ring[(size_t) ringPos] = fifo[(size_t) (fifoR & (uint32_t) (kFifo - 1))];
+            ringPos = (ringPos + 1) % R;
+            ++fifoR;
+            if (++aHopCount == hop)
+            {
+                aHopCount = 0;
+                loadParams();
+                analyse();
+                publishTargets();
+                ++hops;
+            }
+        }
+        lastReadSeen.store (fifoR, std::memory_order_release);
+        return hops;
+    }
+
+    // parameters: audio thread -> analysis (seqlock; the reader retries, the writer never waits)
+    static constexpr int kPrmWords = (int) ((sizeof (FrankenParams) + 3) / 4);
+    std::atomic<uint32_t> prmSeq { 0 };
+    std::atomic<uint32_t> prmWords[kPrmWords] {};
+    FrankenParams aprm;                          // the analysis' copy
+    void publishParams (const FrankenParams& p)
+    {
+        uint32_t w[kPrmWords] = {};
+        std::memcpy (w, &p, sizeof (FrankenParams));
+        const uint32_t s = prmSeq.load (std::memory_order_relaxed);
+        prmSeq.store (s + 1, std::memory_order_relaxed);
+        std::atomic_thread_fence (std::memory_order_release);
+        for (int k = 0; k < kPrmWords; ++k) prmWords[k].store (w[k], std::memory_order_relaxed);
+        prmSeq.store (s + 2, std::memory_order_release);
+    }
+    void loadParams()
+    {
+        uint32_t w[kPrmWords];
+        for (int tries = 0; tries < 64; ++tries)
+        {
+            const uint32_t s0 = prmSeq.load (std::memory_order_acquire);
+            if (s0 & 1u) continue;
+            for (int k = 0; k < kPrmWords; ++k) w[k] = prmWords[k].load (std::memory_order_relaxed);
+            std::atomic_thread_fence (std::memory_order_acquire);
+            if (prmSeq.load (std::memory_order_relaxed) == s0) { std::memcpy (&aprm, w, sizeof (FrankenParams)); return; }
+        }
+    }
+
+    // targets: analysis -> audio thread (seqlock; the audio thread keeps its old targets on a clash)
+    std::atomic<uint32_t> pubSeq { 0 };
+    std::atomic<int> pubEpoch { -1 };
+    std::atomic<double> pubG[kFilters], pubLf[kFilters];
+    double outG[kFilters], outLf[kFilters];      // filled by analyse()
+    void publishTargets()
+    {
+        const uint32_t s = pubSeq.load (std::memory_order_relaxed);
+        pubSeq.store (s + 1, std::memory_order_relaxed);
+        std::atomic_thread_fence (std::memory_order_release);
+        for (int f = 0; f < kFilters; ++f)
+        {
+            pubG[f].store (outG[f], std::memory_order_relaxed);
+            pubLf[f].store (outLf[f], std::memory_order_relaxed);
+        }
+        pubEpoch.store (analysisEpoch, std::memory_order_relaxed);
+        pubSeq.store (s + 2, std::memory_order_release);
+    }
+    void adoptTargets()
+    {
+        double g[kFilters], lf[kFilters];
+        bool ok = false;
+        for (int tries = 0; tries < 4 && ! ok; ++tries)
+        {
+            const uint32_t s0 = pubSeq.load (std::memory_order_acquire);
+            if (s0 & 1u) continue;
+            const int ep = pubEpoch.load (std::memory_order_relaxed);
+            for (int f = 0; f < kFilters; ++f)
+            {
+                g[f] = pubG[f].load (std::memory_order_relaxed);
+                lf[f] = pubLf[f].load (std::memory_order_relaxed);
+            }
+            std::atomic_thread_fence (std::memory_order_acquire);
+            ok = pubSeq.load (std::memory_order_relaxed) == s0 && ep == audioEpoch;
+        }
+        // new ramp: start where the current ramp has got to, head for the newest targets
+        const double t = (double) rampPos / hop;
+        for (int f = 0; f < kFilters; ++f)
+        {
+            gStart[f] = gStart[f] + (gEnd[f] - gStart[f]) * t;
+            lfStart[f] = lfStart[f] + (lfEnd[f] - lfStart[f]) * t;
+            if (ok) { gEnd[f] = g[f]; lfEnd[f] = lf[f]; }
+        }
+        rampPos = 0;
+    }
+
     // one analysed spectrum (the main one and the long low-end one)
     struct Spec
     {
@@ -410,7 +598,7 @@ private:
 
     // ---------------- state
     std::vector<float> dl[kMaxCh], trRing;
-    int ringPos = 0, dlPos = 0, hopCount = 0, ctrlCount = 0, rampPos = 0, hopIndex = 0;
+    int ringPos = 0, dlPos = 0, hopCount = 0, ctrlCount = 0, rampPos = 0, hopIndex = 0, aHopCount = 0;
     double pitchF0 = 100.0, pitchConf = 0.0;
     double f0s[kMaxPitches], f0sL[kMaxPitches]; int nF0 = 0, nF0L = 0;
     // the finished low spectrum the narrow layer reads (published every lowEvery hops)
@@ -531,7 +719,7 @@ private:
     }
     double knee (double e) const
     {
-        const double kn = prm.kneeDb;
+        const double kn = aprm.kneeDb;
         if (e > kn / 2) return e;
         if (e > -kn / 2) return (e + kn / 2) * (e + kn / 2) / (2 * kn);
         return 0.0;
@@ -539,8 +727,8 @@ private:
     double rangeWeight (double f) const
     {
         f = std::max (f, 1.0);
-        const double wl = std::clamp (std::log2 (f / prm.lowHz) * 3.0 + 1.0, 0.0, 1.0);
-        const double wh = std::clamp (std::log2 (prm.highHz / f) * 3.0 + 1.0, 0.0, 1.0);
+        const double wl = std::clamp (std::log2 (f / aprm.lowHz) * 3.0 + 1.0, 0.0, 1.0);
+        const double wh = std::clamp (std::log2 (aprm.highHz / f) * 3.0 + 1.0, 0.0, 1.0);
         return wl * wh;
     }
     static double smoothstep (double a, double b, double x)
@@ -766,8 +954,8 @@ private:
 
         double tgtN[kNarrow] = {}, fNew[kNarrow], tgtB[kBands] = {};
         for (int i = 0; i < kNarrow; ++i) fNew[i] = fqN[i];
-        const double slope = 1.0 - 1.0 / prm.ratio;
-        const double guard = prm.tonalGuard;
+        const double slope = 1.0 - 1.0 / aprm.ratio;
+        const double guard = aprm.tonalGuard;
 
         if (pmax >= -100)
         {
@@ -831,8 +1019,8 @@ private:
                     const double eff = s.dev[k] - guard * guardDb * s.prot[k];
                     if (eff > best) { best = eff; j = k; }
                 }
-                const double e = best - prm.sensitivityDb - prm.scatterK * std::min (mad, 6.0);
-                if (e <= -prm.kneeDb / 2) continue;
+                const double e = best - aprm.sensitivityDb - aprm.scatterK * std::min (mad, 6.0);
+                if (e <= -aprm.kneeDb / 2) continue;
                 if (j > 0 && j < s.nb - 1)
                 {
                     const double a = s.Pdb[j - 1], b = s.Pdb[j], c = s.Pdb[j + 1];
@@ -841,8 +1029,8 @@ private:
                 }
                 else fNew[i] = s.fbins[j];
                 // a partial of a detected note is protected in proportion, however loud it is
-                const double cut = -knee (e) * slope * prm.depth * rangeWeight (fNew[i]) * (1.0 - guard * s.harm[j]);
-                tgtN[i] = std::max (cut, (double) -prm.maxCutDb);
+                const double cut = -knee (e) * slope * aprm.depth * rangeWeight (fNew[i]) * (1.0 - guard * s.harm[j]);
+                tgtN[i] = std::max (cut, (double) -aprm.maxCutDb);
             }
 
             // broad layer (main spectrum)
@@ -855,21 +1043,21 @@ private:
                 for (int k = bandS[b]; k < bandE[b]; ++k) { Lsum += A.Pdb[k]; Esum += envB[k]; pw += A.Psm[k]; pp += A.Psm[k] * A.prot[k]; }
                 const int n = bandE[b] - bandS[b];
                 const double protB = pw > 0 ? pp / pw : 0.0;
-                tgtB[b] = -std::max (0.0, Lsum / n - Esum / n - prm.sensitivityDb) * slope * prm.broadDepth
+                tgtB[b] = -std::max (0.0, Lsum / n - Esum / n - aprm.sensitivityDb) * slope * aprm.broadDepth
                           * rangeWeight (bandC[b]) * (1.0 - guard * protB);
             }
         }
 
         // dynamics
-        const double aAtt = coef (prm.attackMs), aRel = coef (prm.releaseMs), aGl = coef (prm.glideMs);
+        const double aAtt = coef (aprm.attackMs), aRel = coef (aprm.releaseMs), aGl = coef (aprm.glideMs);
         for (int i = 0; i < kNarrow; ++i)
         {
             // a bell may not move faster than ~2 cycles of its own frequency: changing a
             // low cut inside a single bass cycle reshapes the wave and raises its peaks
             const double cyc = 1000.0 / std::max (fqN[i], 20.0);              // ms per cycle
-            const double att = cyc * 2.0 > prm.attackMs ? coef (cyc * 2.0) : aAtt;
-            const double rel = cyc * 4.0 > prm.releaseMs ? coef (cyc * 4.0) : aRel;
-            const double gl = cyc * 3.0 > prm.glideMs ? coef (cyc * 3.0) : aGl;
+            const double att = cyc * 2.0 > aprm.attackMs ? coef (cyc * 2.0) : aAtt;
+            const double rel = cyc * 4.0 > aprm.releaseMs ? coef (cyc * 4.0) : aRel;
+            const double gl = cyc * 3.0 > aprm.glideMs ? coef (cyc * 3.0) : aGl;
             const double c = tgtN[i] < grN[i] ? att : rel;
             grN[i] = c * grN[i] + (1 - c) * tgtN[i];
             if (tgtN[i] < -0.05) fqN[i] = std::exp (gl * std::log (fqN[i]) + (1 - gl) * std::log (fNew[i]));
@@ -880,28 +1068,22 @@ private:
             grB[b] = c * grB[b] + (1 - c) * tgtB[b];
         }
 
-        // new ramp targets: start where the current ramp has got to
-        const double t = (double) rampPos / hop;
-        for (int f = 0; f < kFilters; ++f)
-        {
-            gStart[f] = gStart[f] + (gEnd[f] - gStart[f]) * t;
-            lfStart[f] = lfStart[f] + (lfEnd[f] - lfStart[f]) * t;
-        }
+        // new targets for the filters (the audio thread ramps towards them)
         const double fcMax = fs * 0.45;
         for (int i = 0; i < kNarrow; ++i)
         {
-            gEnd[i] = grN[i];
-            lfEnd[i] = std::log (std::clamp (fqN[i], 20.0, fcMax));
+            outG[i] = grN[i];
+            outLf[i] = std::log (std::clamp (fqN[i], 20.0, fcMax));
             meterGainN[i].store ((float) grN[i], std::memory_order_relaxed);
             meterFreqN[i].store ((float) fqN[i], std::memory_order_relaxed);
         }
         for (int j = 0; j < kBroad; ++j)
         {
             double s = 0; for (int b = 0; b < kBands; ++b) s += M[j][b] * grB[b];
-            gEnd[kNarrow + j] = std::clamp (s, (double) -prm.maxCutDb, 1.0);
-            meterGainB[j].store ((float) gEnd[kNarrow + j], std::memory_order_relaxed);
+            outG[kNarrow + j] = std::clamp (s, (double) -aprm.maxCutDb, 1.0);
+            outLf[kNarrow + j] = std::log (fcB[j]);
+            meterGainB[j].store ((float) outG[kNarrow + j], std::memory_order_relaxed);
         }
-        rampPos = 0;
     }
 
     void updateCoeffs()

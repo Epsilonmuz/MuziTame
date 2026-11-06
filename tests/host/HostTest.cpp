@@ -55,6 +55,7 @@ int main (int argc, char** argv)
     }
 
     inst->setPlayConfigDetails (2, 2, fs, block);
+    inst->setNonRealtime (std::getenv ("MUZI_REALTIME") == nullptr);   // a render: sample-exact unless MUZI_REALTIME is set
     inst->prepareToPlay (fs, block);
     juce::AudioBuffer<float> warm (2, block); warm.clear(); juce::MidiBuffer midi;
     inst->processBlock (warm, midi);          // lets a mode change apply before we read latency
