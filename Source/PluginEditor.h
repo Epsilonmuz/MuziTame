@@ -78,7 +78,8 @@ private:
     int hoverX = -1, dragging = 0;                  // dragging: 1 = low, 2 = high
     // performance: static layer cached as an image, per-column cos(w)/cos(2w) for the curve maths,
     // and no work at all while the plugin is idle
-    juce::Image staticLayer;
+    juce::Image staticLayer, frame;
+    void paintContent (juce::Graphics&, float pixelScale);
     float staticScale = 0.0f;
     void renderStaticLayer (float pixelScale);
     std::vector<double> cosW, cos2W;

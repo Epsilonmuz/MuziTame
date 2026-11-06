@@ -331,7 +331,7 @@ void AnalyzerDisplay::renderStaticLayer (float pixelScale)
     const auto p = plot();
     const float ts = textScale;
     staticLayer = juce::Image (juce::Image::RGB, juce::jmax (1, juce::roundToInt (b.getWidth() * pixelScale)),
-                               juce::jmax (1, juce::roundToInt (b.getHeight() * pixelScale)), false);
+                               juce::jmax (1, juce::roundToInt (b.getHeight() * pixelScale)), false, juce::SoftwareImageType());
     staticScale = pixelScale;
     juce::Graphics g (staticLayer);
     g.addTransform (juce::AffineTransform::scale (pixelScale));
@@ -363,13 +363,32 @@ void AnalyzerDisplay::renderStaticLayer (float pixelScale)
     g.drawRoundedRectangle (b.reduced (0.5f), 10.0f * ts, 1.0f);
 }
 
+// macOS's CoreGraphics is slow at stroking and filling these long, animated paths at Retina
+// resolution (measured on an Intel Mac: about half a CPU core at 30 fps). JUCE's own software
+// renderer draws the same frame several times faster, so the analyser is drawn into an
+// image at the screen's pixel density and handed to the system as a single bitmap.
 void AnalyzerDisplay::paint (juce::Graphics& g)
+{
+    const float pixelScale = juce::jmax (1.0f, g.getInternalContext().getPhysicalPixelScaleFactor());
+    const int W = juce::jmax (1, juce::roundToInt ((float) getWidth() * pixelScale));
+    const int H = juce::jmax (1, juce::roundToInt ((float) getHeight() * pixelScale));
+    if (! frame.isValid() || frame.getWidth() != W || frame.getHeight() != H)
+        frame = juce::Image (juce::Image::RGB, W, H, false, juce::SoftwareImageType());
+    {
+        juce::Graphics fg (frame);
+        fg.addTransform (juce::AffineTransform::scale (pixelScale));
+        paintContent (fg, pixelScale);
+    }
+    g.setImageResamplingQuality (juce::Graphics::lowResamplingQuality);   // 1:1 pixels, no filtering needed
+    g.drawImage (frame, getLocalBounds().toFloat());
+}
+
+void AnalyzerDisplay::paintContent (juce::Graphics& g, float pixelScale)
 {
     const auto b = getLocalBounds().toFloat();
     const auto p = plot();
     const float ts = textScale;
 
-    const float pixelScale = juce::jmax (1.0f, g.getInternalContext().getPhysicalPixelScaleFactor());
     if (! staticLayer.isValid() || std::abs (pixelScale - staticScale) > 0.01f) renderStaticLayer (pixelScale);
     g.drawImage (staticLayer, b);
 
