@@ -1,8 +1,18 @@
-# Muzi Tame v0.6 — FrankenTame engine
+# Muzi Tame v0.6.1 — FrankenTame engine
 
 Automatic resonance suppressor (JUCE, VST3 / AU / Standalone). Full user guide: `Muzi Tame Manual.pdf`.
 
 ![Muzi Tame](screenshot.png)
+
+## What's new in v0.6.1 (measured on real Macs)
+`.github/workflows/perf.yml` runs `tests/perf/Perf.cpp` on GitHub's Intel Mac (i7-8700B, the same chip generation as a 2019 MacBook Pro) and on Apple Silicon (M2 Pro). It times every audio block against its real-time budget, and times the display drawn with macOS's own renderer at Retina resolution. The full tables are in each run's Summary.
+- **The display was the main load on the Mac.** CoreGraphics took about 49% of a core on Intel at 30 fps. The analyser is now drawn by JUCE's software renderer straight into a native bitmap.
+  - Intel: Full 22%, Light 11%, Off 5% of one core.
+  - Apple Silicon: Full 13%, Light 7%, Off 2.5%.
+- **Audio, one instance at 44.1/48 kHz:**
+  - Intel: about 16–19% of a core on average. Apple Silicon: about 8–9%.
+  - Use 128 samples or more with High-res. At 64 samples its analysis lands in one block out of four.
+  - 96 kHz roughly doubles the cost.
 
 ## What's new in v0.6 (latency and CPU)
 - **New LIVE mode: zero latency.** Use it for recording, monitoring and live sound.
