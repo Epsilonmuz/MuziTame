@@ -14,6 +14,10 @@ Same sound. Measured on GitHub's Intel Mac (the same chip generation as a 2019 M
   - The v0.6.3 whole-window software cache made things slower on Intel and is gone.
   - The cut curve's glow is drawn with cheaper joins.
 - `tests/perf` now reports the audio thread and the analysis worker separately, and compares the window redraw strategies.
+- **Measured on GitHub's Intel Mac (i7-8700B), one instance:**
+  - Audio thread: about 2.5% of each block's budget at 44.1/48 kHz, with 128 and 256 samples. The 99th percentile is 3–6% (v0.6.3: 30–113%, with dozens of blocks over budget at 128 samples; v0.7: none).
+  - Analysis worker: about 9–10% of one core.
+  - Window with the analyser on Full: 31% of one core (v0.6.2: 53%).
 
 ## What's new in v0.6.2 (the real cause of the lag)
 - **Xcode's Debug build was unoptimised (-O0).** Opening the .jucer in Xcode and pressing Build or Run builds the *Debug* configuration, and that had optimisation switched off. Every speed test so far measured Release, so they never saw it. Measured on the same engine: -O0 costs about 3.5x the CPU of -O3 on average, and single audio blocks regularly ran past their real-time deadline (dropouts). The analyser drawing gets the same penalty, which is what made the whole Mac stutter.
