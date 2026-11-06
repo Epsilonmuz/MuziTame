@@ -1,8 +1,17 @@
-# Muzi Tame v0.5.1 — FrankenTame engine
+# Muzi Tame v0.6 — FrankenTame engine
 
 Automatic resonance suppressor (JUCE, VST3 / AU / Standalone). Full user guide: `Muzi Tame Manual.pdf`.
 
 ![Muzi Tame](screenshot.png)
+
+## What's new in v0.6 (latency and CPU)
+- **New LIVE mode: zero latency.** Use it for recording, monitoring and live sound.
+  - Standard (32 ms) and High-res (91 ms) delay the audio so the analysis can look ahead. Live doesn't delay the audio at all. This is the same approach as the tracking modes in soothe3 (0 samples at 44.1/48 kHz) and Gullfoss LIVE (under 2 ms).
+  - The cut filters are minimum-phase IIR bells, so they add no delay of their own. In Live the analysis uses an asymmetric window that weights the newest audio most, so it reacts sooner without losing frequency detail.
+  - Trade-off, measured on the Resonance Lab tests: steady resonances are cut almost as much as in Standard (2.4k/5.2k/9k within 0.3 dB). Short, sudden harshness gets about half the cut (JOJO harsh 5.6 kHz: -1.6 dB vs -3.6 dB), because nothing can react before a sound has happened. Use Standard or High-res for mixing.
+  - The CPU cost is the same as Standard.
+- **Analyser: Full / Light / Off** (the button in the footer). Light halves the display's frame rate. Off hides the spectrum and shows only the cut curve. Use it on older Macs or in big sessions. The sound does not change, and the setting is saved with the session.
+- **About 10% less DSP CPU.** A fast, exact-to-1e-12 log replaces the libm log10 calls in the per-bin loops. Output is identical to v0.5.1 within -168 dBFS.
 
 ## What's new in v0.5.1 (performance)
 Same sound, much lighter on the computer. On the Resonance Lab tests every score matches v0.5 within normal run-to-run variation.

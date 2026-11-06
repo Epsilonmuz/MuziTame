@@ -97,10 +97,11 @@ public:
         auto r = b.getLocalBounds().toFloat().reduced (0.5f);
         const bool on = b.getToggleState();
         const float rad = r.getHeight() * 0.5f;
-        const int edges = (int) b.getProperties().getWithDefault ("edges", 0);   // 1 = left half, 2 = right half
+        const int edges = (int) b.getProperties().getWithDefault ("edges", 0);   // 1 = left end, 2 = right end, 3 = middle
+        const bool roundL = edges == 0 || edges == 1, roundR = edges == 0 || edges == 2;
         juce::Path p;
         p.addRoundedRectangle (r.getX(), r.getY(), r.getWidth(), r.getHeight(), rad, rad,
-                               edges != 2, edges != 1, edges != 2, edges != 1);
+                               roundL, roundR, roundL, roundR);
         g.setColour (on ? col::accent.withAlpha (0.16f) : col::bg2.brighter (over ? 0.08f : 0.0f).darker (down ? 0.1f : 0.0f));
         g.fillPath (p);
         g.setColour (on ? col::accent.withAlpha (0.7f) : col::line);

@@ -8,7 +8,7 @@ extern "C" {
 void* ft_create (double fs, int ch, int highRes, int delay)
 {
     auto* e = new muzi::FrankenTameEngine();
-    e->prepare (fs, ch, highRes != 0, delay);
+    e->prepare (fs, ch, highRes, delay);   // 0 Standard, 1 High-res, 2 Live
     return e;
 }
 void ft_destroy (void* e) { delete static_cast<muzi::FrankenTameEngine*> (e); }
@@ -25,6 +25,11 @@ void ft_set (void* e, float depth, float sens, float ratio, float att, float rel
 }
 void ft_set_range (float lo, float hi) { g_low = lo; g_high = hi; }
 void ft_set_tguard (float v) { g_tguard = v; }
+void ft_live_tune (int nfft, int hop, int lowFactor, double fallFrac, double smoothMs)
+{
+    auto& t = muzi::FrankenTameEngine::liveTuning();
+    t.nfft = nfft; t.hop = hop; t.lowFactor = lowFactor; t.fallFrac = fallFrac; t.smoothMs = smoothMs;
+}
 
 // x: planar float32, ch * n, processed in host-sized blocks
 void ft_process (void* e, float* x, int ch, int n, int block)

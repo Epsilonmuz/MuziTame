@@ -61,7 +61,7 @@ APVTS::ParameterLayout MuziTameProcessor::createLayout()
     l.add (std::make_unique<AudioParameterFloat> (ParameterID { "maxcut", 1 }, "Max Cut", NormalisableRange<float> (3.0f, 24.0f, 0.1f), 12.0f, db));
     l.add (std::make_unique<AudioParameterFloat> (ParameterID { "mix", 1 }, "Mix", NormalisableRange<float> (0.0f, 100.0f, 0.1f), 100.0f, pct));
     l.add (std::make_unique<AudioParameterBool>  (ParameterID { "delta", 1 }, "Delta", false));
-    l.add (std::make_unique<AudioParameterChoice>(ParameterID { "mode", 1 }, "Mode", StringArray { "Standard", "High-res" }, 0));
+    l.add (std::make_unique<AudioParameterChoice>(ParameterID { "mode", 1 }, "Mode", StringArray { "Standard", "High-res", "Live" }, 0));
     l.add (std::make_unique<AudioParameterFloat> (ParameterID { "low", 2 }, "Low Limit", freqRange (20.0f, 20000.0f), 20.0f, hz));
     l.add (std::make_unique<AudioParameterFloat> (ParameterID { "high", 2 }, "High Limit", freqRange (20.0f, 20000.0f), 20000.0f, hz));
     l.add (std::make_unique<AudioParameterFloat> (ParameterID { "trim", 2 }, "Output", NormalisableRange<float> (-12.0f, 12.0f, 0.1f), 0.0f, db));
@@ -107,8 +107,9 @@ void MuziTameProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
 {
     currentRate = sampleRate;
     const int ch = juce::jmax (1, getTotalNumOutputChannels());
-    engines[0].prepare (sampleRate, ch, false);    // allocation happens here, never in processBlock
-    engines[1].prepare (sampleRate, ch, true);
+    engines[0].prepare (sampleRate, ch, 0);        // allocation happens here, never in processBlock
+    engines[1].prepare (sampleRate, ch, 1);
+    engines[2].prepare (sampleRate, ch, 2);        // Live: zero latency, for tracking and live use
     const int m = (int) mode->load();
     activeMode.store (m);
     setLatencySamples (engines[(size_t) m].getLatencySamples());
@@ -144,7 +145,7 @@ void MuziTameProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::Mi
     const int m = (int) mode->load();
     if (m != activeMode.load())
     {
-        engines[(size_t) m].reset();               // no allocation: both were prepared
+        engines[(size_t) m].reset();               // no allocation: all were prepared
         activeMode.store (m);
         setLatencySamples (engines[(size_t) m].getLatencySamples());
     }

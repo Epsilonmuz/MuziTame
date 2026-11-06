@@ -30,6 +30,7 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("lab")
     ap.add_argument("--high-res", action="store_true")
+    ap.add_argument("--live", type=float, nargs=5, default=None, metavar=("NFFT", "HOP", "LOWFACTOR", "FALL", "SMOOTHMS"))
     ap.add_argument("--block", type=int, default=512)
     ap.add_argument("--name", default=None)
     ap.add_argument("--delay", type=int, default=-1)
@@ -39,6 +40,9 @@ def main():
     ap.add_argument("--guard", type=float, default=0.8)
     a = ap.parse_args()
     so = build()
+    if a.live:
+        so.ft_live_tune.argtypes = [ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_double, ctypes.c_double]
+        so.ft_live_tune(int(a.live[0]), int(a.live[1]), int(a.live[2]), a.live[3], a.live[4])
     if a.tguard is not None:
         so.ft_set_tguard.argtypes = [ctypes.c_float]
         so.ft_set_tguard(a.tguard)
@@ -53,7 +57,7 @@ def main():
         fs, x = wavfile.read(path)
         x = np.ascontiguousarray(x.T.astype(np.float32))           # planar
         ch, n = x.shape
-        e = so.ft_create(fs, ch, int(a.high_res), a.delay)
+        e = so.ft_create(fs, ch, 2 if a.live else int(a.high_res), a.delay)
         so.ft_set(e, 1.0, 2.0, 8.0, 3.0, 60.0, 12.0, 0.3, a.guard, 1.0, 0)
         t0 = time.perf_counter()
         so.ft_process(e, x.ctypes.data_as(ctypes.POINTER(ctypes.c_float)), ch, n, a.block)

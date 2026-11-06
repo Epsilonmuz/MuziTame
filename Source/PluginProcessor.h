@@ -80,7 +80,7 @@ public:
     std::atomic<float> inLevel { 0.0f }, outLevel { 0.0f };   // peak, linear, with decay
 
 private:
-    std::array<muzi::FrankenTameEngine, 2> engines;
+    std::array<muzi::FrankenTameEngine, 3> engines;   // Standard, High-res, Live
     std::atomic<int> activeMode { 0 };
     double currentRate = 48000.0;
     juce::SmoothedValue<float, juce::ValueSmoothingTypes::Multiplicative> trimGain;

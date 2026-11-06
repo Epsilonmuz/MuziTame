@@ -52,6 +52,7 @@ class AnalyzerDisplay : public juce::Component
 public:
     explicit AnalyzerDisplay (MuziTameProcessor&);
     int editorHeight = 600;                         // to continue the editor's background gradient (opaque)
+    int quality = 0;                                // analyser: 0 full, 1 light (15 fps), 2 off (cut curve only)
     void update();                                  // called from the editor's timer (and snapshot tool)
     void paint (juce::Graphics&) override;
     void resized() override;
@@ -126,7 +127,9 @@ private:
 
     juce::ComboBox presetBox;
     juce::TextButton prevPreset { "<" }, nextPreset { ">" };
-    juce::TextButton modeStd { "STANDARD" }, modeHi { "HI-RES" }, deltaBtn { "DELTA" };
+    juce::TextButton modeLive { "LIVE" }, modeStd { "STANDARD" }, modeHi { "HI-RES" }, deltaBtn { "DELTA" }, analyserBtn;
+    int frameCount = 0;
+    void setAnalyserQuality (int q);
     PowerButton bypassBtn;
     std::unique_ptr<juce::ParameterAttachment> modeAttachment;
     std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment> deltaAttachment, bypassAttachment;

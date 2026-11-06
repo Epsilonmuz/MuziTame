@@ -214,10 +214,18 @@ void AnalyzerDisplay::update()
     idleFrames = (nIn == 0 && nOut == 0) ? idleFrames + 1 : 0;
     if (idleFrames > 90) return;
 
-    computeSpectrum (ringIn, specIn);
-    computeSpectrum (ringOut, specOut);
-    toColumns (specIn, colIn);
-    toColumns (specOut, colOut);
+    if (quality < 2)
+    {
+        computeSpectrum (ringIn, specIn);
+        computeSpectrum (ringOut, specOut);
+        toColumns (specIn, colIn);
+        toColumns (specOut, colOut);
+    }
+    else
+    {
+        std::fill (colIn.begin(), colIn.end(), -120.0f);
+        std::fill (colOut.begin(), colOut.end(), -120.0f);
+    }
 
     const auto& eng = proc.activeEngine();
     const double fs = proc.getCurrentSampleRate(), q = proc.getSharpness();
@@ -370,26 +378,29 @@ void AnalyzerDisplay::paint (juce::Graphics& g)
         g.reduceClipRegion (p.toNearestInt().expanded (2));
 
         const int n = (int) colIn.size();
-        // input spectrum, filled
-        juce::Path in;
-        in.startNewSubPath (p.getX(), p.getBottom());
-        for (int c = 0; c < n; c = (c + 2 < n || c == n - 1) ? c + 2 : n - 1) in.lineTo (p.getX() + (float) c, ySpec (colIn[(size_t) c]));
-        in.lineTo (p.getX() + (float) (n - 1), p.getBottom());
-        in.closeSubPath();
-        juce::ColourGradient sg (juce::Colour (0xff4a5468).withAlpha (0.55f), 0, p.getY() + p.getHeight() * 0.3f,
-                                 juce::Colour (0xff2a303c).withAlpha (0.35f), 0, p.getBottom(), false);
-        g.setGradientFill (sg);
-        g.fillPath (in);
-
-        // output spectrum, line
-        juce::Path out;
-        for (int c = 0; c < n; c = (c + 2 < n || c == n - 1) ? c + 2 : n - 1)
+        if (quality < 2)                            // analyser off: only the cut curve
         {
-            const float x = p.getX() + (float) c, y = ySpec (colOut[(size_t) c]);
-            c == 0 ? out.startNewSubPath (x, y) : out.lineTo (x, y);
+            // input spectrum, filled
+            juce::Path in;
+            in.startNewSubPath (p.getX(), p.getBottom());
+            for (int c = 0; c < n; c = (c + 2 < n || c == n - 1) ? c + 2 : n - 1) in.lineTo (p.getX() + (float) c, ySpec (colIn[(size_t) c]));
+            in.lineTo (p.getX() + (float) (n - 1), p.getBottom());
+            in.closeSubPath();
+            juce::ColourGradient sg (juce::Colour (0xff4a5468).withAlpha (0.55f), 0, p.getY() + p.getHeight() * 0.3f,
+                                     juce::Colour (0xff2a303c).withAlpha (0.35f), 0, p.getBottom(), false);
+            g.setGradientFill (sg);
+            g.fillPath (in);
+
+            // output spectrum, line
+            juce::Path out;
+            for (int c = 0; c < n; c = (c + 2 < n || c == n - 1) ? c + 2 : n - 1)
+            {
+                const float x = p.getX() + (float) c, y = ySpec (colOut[(size_t) c]);
+                c == 0 ? out.startNewSubPath (x, y) : out.lineTo (x, y);
+            }
+            g.setColour (col::text.withAlpha (0.38f));
+            g.strokePath (out, juce::PathStrokeType (1.1f * ts));
         }
-        g.setColour (col::text.withAlpha (0.38f));
-        g.strokePath (out, juce::PathStrokeType (1.1f * ts));
 
         // out-of-range shading
         const float xl = xForFreq (limitHz (1)), xh = xForFreq (limitHz (2));
@@ -537,17 +548,22 @@ MuziTameEditor::MuziTameEditor (MuziTameProcessor& p)
     refreshPresetBox();
 
     // mode: segmented control bound to the choice parameter
-    modeStd.getProperties().set ("edges", 1);
+    modeLive.getProperties().set ("edges", 1);
+    modeStd.getProperties().set ("edges", 3);
     modeHi.getProperties().set ("edges", 2);
-    modeStd.setTooltip ("Standard: 32 ms latency. Good for tracking and everyday mixing.");
+    modeLive.setTooltip ("Live: zero latency. For recording, monitoring and live sound. Reacts a little later to short, sudden harshness.");
+    modeStd.setTooltip ("Standard: 32 ms latency. The everyday mixing mode.");
     modeHi.setTooltip ("High-res: 91 ms latency, faster attack and finer low-end detail. For mixing and mastering.");
     modeAttachment = std::make_unique<juce::ParameterAttachment> (*p.apvts.getParameter ("mode"), [this] (float v)
     {
-        modeStd.setToggleState (v < 0.5f, juce::dontSendNotification);
-        modeHi.setToggleState (v >= 0.5f, juce::dontSendNotification);
+        const int m = juce::roundToInt (v);
+        modeStd.setToggleState (m == 0, juce::dontSendNotification);
+        modeHi.setToggleState (m == 1, juce::dontSendNotification);
+        modeLive.setToggleState (m == 2, juce::dontSendNotification);
     });
-    modeStd.onClick = [this] { modeAttachment->setValueAsCompleteGesture (0.0f); };
-    modeHi.onClick  = [this] { modeAttachment->setValueAsCompleteGesture (1.0f); };
+    modeStd.onClick  = [this] { modeAttachment->setValueAsCompleteGesture (0.0f); };
+    modeHi.onClick   = [this] { modeAttachment->setValueAsCompleteGesture (1.0f); };
+    modeLive.onClick = [this] { modeAttachment->setValueAsCompleteGesture (2.0f); };
     modeAttachment->sendInitialUpdate();
 
     deltaBtn.setClickingTogglesState (true);
@@ -555,8 +571,11 @@ MuziTameEditor::MuziTameEditor (MuziTameProcessor& p)
     deltaAttachment = std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment> (p.apvts, "delta", deltaBtn);
     bypassBtn.setTooltip ("Bypass (latency is kept, so A/B comparisons stay in time).");
     bypassAttachment = std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment> (p.apvts, "bypass", bypassBtn);
-    for (auto* c : std::initializer_list<juce::Component*> { &modeStd, &modeHi, &deltaBtn, &bypassBtn })
+    for (auto* c : std::initializer_list<juce::Component*> { &modeLive, &modeStd, &modeHi, &deltaBtn, &bypassBtn, &analyserBtn })
         addAndMakeVisible (c);
+    analyserBtn.setTooltip ("Analyser display: Full, Light (half the frame rate) or Off. Lighter settings help older or busy computers. The sound does not change.");
+    analyserBtn.onClick = [this] { setAnalyserQuality ((display.quality + 1) % 3); };
+    setAnalyserQuality ((int) proc.apvts.state.getProperty ("analyser", 0));
 
     setResizable (true, true);
     setResizeLimits (720, 450, 1440, 900);
@@ -576,9 +595,20 @@ void MuziTameEditor::refreshPresetBox()
     presetBox.setSelectedItemIndex (proc.currentPreset, juce::dontSendNotification);
 }
 
+void MuziTameEditor::setAnalyserQuality (int q)
+{
+    display.quality = juce::jlimit (0, 2, q);
+    proc.apvts.state.setProperty ("analyser", display.quality, nullptr);
+    analyserBtn.setButtonText (juce::StringArray { "ANALYSER: FULL", "ANALYSER: LIGHT", "ANALYSER: OFF" }[display.quality]);
+    display.repaint();
+}
+
 void MuziTameEditor::timerCallback()
 {
-    display.update();
+    // Full redraws at 30 fps, Light at 15 fps, Off shows only the cut curve at 10 fps
+    ++frameCount;
+    const int every = display.quality == 0 ? 1 : display.quality == 1 ? 2 : 3;
+    if (frameCount % every == 0) display.update();
     inMeter.tick();
     outMeter.tick();
     if (presetBox.getSelectedItemIndex() != proc.currentPreset) refreshPresetBox();
@@ -605,12 +635,14 @@ void MuziTameEditor::resized()
 
     header = sc (0, 0, kBaseW, 56);
     footer = sc (0, 574, kBaseW, 26);
+    analyserBtn.setBounds (sc (kBaseW * 0.5f - 66, 577, 132, 20));
 
-    prevPreset.setBounds (sc (330, 14, 28, 28));
-    presetBox.setBounds (sc (362, 14, 236, 28));
-    nextPreset.setBounds (sc (602, 14, 28, 28));
-    modeStd.setBounds (sc (664, 14, 92, 28));
-    modeHi.setBounds (sc (756, 14, 70, 28));
+    prevPreset.setBounds (sc (300, 14, 28, 28));
+    presetBox.setBounds (sc (332, 14, 236, 28));
+    nextPreset.setBounds (sc (572, 14, 28, 28));
+    modeLive.setBounds (sc (620, 14, 56, 28));
+    modeStd.setBounds (sc (676, 14, 90, 28));
+    modeHi.setBounds (sc (766, 14, 64, 28));
     deltaBtn.setBounds (sc (836, 14, 62, 28));
     bypassBtn.setBounds (sc (912, 14, 28, 28));
 
@@ -703,5 +735,5 @@ void MuziTameEditor::paint (juce::Graphics& g)
     g.setFont (font (10.5f * s));
     juce::ignoreUnused (ms);
     g.drawText (footerText(), footer.reduced ((int) (18 * s), 0), juce::Justification::centredLeft);
-    g.drawText ("v0.5.1   |   double-click any control to reset", footer.reduced ((int) (18 * s), 0), juce::Justification::centredRight);
+    g.drawText ("v0.6.0   |   double-click any control to reset", footer.reduced ((int) (18 * s), 0), juce::Justification::centredRight);
 }

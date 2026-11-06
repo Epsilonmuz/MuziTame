@@ -28,7 +28,7 @@
         look-ahead delay -> cascade of TPT/ZDF SVF bells (minimum phase),
         gain and centre ramped across each hop, coefficients every 16 samples
 
-    Latency = getLatencySamples() (Standard 1536, High-res 4352 samples at
+    Latency = getLatencySamples() (Standard 1536, High-res 4352, Live 0 samples at
     48 kHz). Report it to the host with setLatencySamples().
 */
 #pragma once
@@ -46,6 +46,8 @@
 #include <algorithm>
 #include <atomic>
 #include <cmath>
+#include <cstring>
+#include <cstdint>
 #include <complex>
 #include <memory>
 #include <vector>
@@ -55,6 +57,22 @@
 
 namespace muzi
 {
+
+// Natural log for positive, normal doubles without a libm call, so the per-bin loops
+// vectorise. Error < 1e-12 relative (|t| <= 0.172, series to t^13), far below 1e-6 dB.
+inline double fastLn (double x) noexcept
+{
+    std::uint64_t b; std::memcpy (&b, &x, sizeof b);
+    int e = (int) ((b >> 52) & 0x7ff) - 1023;
+    b = (b & 0x000fffffffffffffULL) | 0x3ff0000000000000ULL;
+    double m; std::memcpy (&m, &b, sizeof m);
+    if (m > 1.4142135623730951) { m *= 0.5; ++e; }
+    const double t = (m - 1.0) / (m + 1.0), t2 = t * t;
+    const double series = t * (2.0 + t2 * (2.0 / 3 + t2 * (2.0 / 5 + t2 * (2.0 / 7 + t2 * (2.0 / 9 + t2 * (2.0 / 11 + t2 * (2.0 / 13)))))));
+    return e * 0.6931471805599453 + series;
+}
+inline double fastDb10 (double p) noexcept { return 4.342944819032518 * fastLn (p); }   // 10*log10(p)
+
 
 struct FrankenParams
 {
@@ -167,17 +185,28 @@ public:
     static constexpr int kNarrow = 32, kBroad = 20, kBands = 48, kFilters = kNarrow + kBroad;
     static constexpr int kMaxCh = 8, kCtrl = 16, kMaxPitches = 4, kMaxPeaks = 160;
 
-    void prepare (double sampleRate, int numChannels, bool highRes = false, int delayOverride = -1)
+    // Analysis settings of the Live (zero-latency) mode. Public so the Lab can tune it.
+    struct LiveTuning { int nfft = 2048, hop = 128, lowFactor = 4; double fallFrac = 0.125, smoothMs = 25.0; };
+    static LiveTuning& liveTuning() { static LiveTuning t; return t; }
+
+    // mode: 0 = Standard, 1 = High-res, 2 = Live (no look-ahead: zero latency)
+    void prepare (double sampleRate, int numChannels, int mode = 0, int delayOverride = -1)
     {
         fs = sampleRate;
         nch = std::min (numChannels, kMaxCh);
+        live = mode == 2;
+        const bool highRes = mode == 1;
         // scale FFT/hop with sample rate so frequency and time resolution
         // stay the same at 44.1/48/88.2/96 kHz
         const int scale = sampleRate > 60000 ? 2 : 1;
-        const int nfft = (highRes ? 4096 : 2048) * scale;
-        hop = (highRes ? 256 : 128) * scale;
+        const auto& lt = liveTuning();
+        const int nfft = (live ? lt.nfft : highRes ? 4096 : 2048) * scale;
+        hop = (live ? lt.hop : highRes ? 256 : 128) * scale;
+        lowFactor = live ? lt.lowFactor : 4;
+        winFall = live ? lt.fallFrac : 0.5;
+        specSmoothMs = live ? lt.smoothMs : 25.0;
         lowEvery = 4;
-        delay = delayOverride > 0 ? delayOverride : defaultDelay (highRes) * scale;
+        delay = delayOverride >= 0 ? delayOverride : live ? 0 : defaultDelay (highRes) * scale;
 
         // shared log grid for the running median
         const int nlg = (int) (std::log2 (fs / 2.0 / (fLo / 2.0)) * 48.0);
@@ -231,9 +260,9 @@ public:
             bandE[k] = std::max (bandS[k], lowerBound (A, bc[k] + half));
         }
 
-        for (int c = 0; c < nch; ++c) dl[c].assign (delay, 0.0f);
-        trRing.assign (delay, 0.0f);
-        lead = std::min (delay - 1, 64 * scale);
+        for (int c = 0; c < nch; ++c) dl[c].assign (std::max (delay, 1), 0.0f);
+        trRing.assign (std::max (delay, 1), 0.0f);
+        lead = std::min (delay - 1, 64 * scale);           // -1 when there is no look-ahead (Live)
         reset();
     }
 
@@ -306,8 +335,8 @@ public:
             envSlow = a > envSlow ? aSa * envSlow + (1 - aSa) * a : aSr * envSlow + (1 - aSr) * a;
             const double r = envFast / (envSlow + 1e-9);
             const float amt = (float) std::clamp ((r - 1.6) / (3.2 - 1.6), 0.0, 1.0);
-            const double ahead = trRing[(size_t) ((dlPos + lead) % delay)];
-            trRing[(size_t) dlPos] = amt;
+            double ahead = amt;                     // no look-ahead in Live mode: react to the hit itself
+            if (delay > 0 && lead >= 0) { ahead = trRing[(size_t) ((dlPos + lead) % delay)]; trRing[(size_t) dlPos] = amt; }
             transient = ahead > transient ? aTa * transient + (1 - aTa) * ahead : aTr * transient + (1 - aTr) * ahead;
 
             if (++hopCount == hop) { hopCount = 0; analyse(); }
@@ -315,7 +344,8 @@ public:
             rampPos = std::min (rampPos + 1, hop);
 
             float dry[kMaxCh]; double v[kMaxCh];
-            for (int c = 0; c < nch; ++c) { dry[c] = dl[c][dlPos]; dl[c][dlPos] = ch[c][i]; v[c] = dry[c]; }
+            if (delay > 0) for (int c = 0; c < nch; ++c) { dry[c] = dl[c][dlPos]; dl[c][dlPos] = ch[c][i]; v[c] = dry[c]; }
+            else           for (int c = 0; c < nch; ++c) { dry[c] = ch[c][i]; v[c] = dry[c]; }
             for (int f = 0; f < kFilters; ++f)
             {
                 const double a1 = ca1[f], a2 = ca2[f], a3 = ca3[f], m1 = cm1[f];
@@ -334,7 +364,7 @@ public:
                 const float wet = prm.delta ? (float) (dry[c] - v[c]) : (float) v[c];
                 ch[c][i] = prm.mix * wet + (1.0f - prm.mix) * dry[c];
             }
-            dlPos = (dlPos + 1) % delay;
+            if (delay > 0) dlPos = (dlPos + 1) % delay;
         }
     }
 
@@ -356,12 +386,15 @@ private:
     };
 
     // ---------------- fixed structure
-    const double fLo = 40.0, fHi = 18000.0, envOct = 0.5, broadEnvOct = 2.0, specSmoothMs = 25.0;
+    const double fLo = 40.0, fHi = 18000.0, envOct = 0.5, broadEnvOct = 2.0;
+    double specSmoothMs = 25.0;
     bool useUpperEnv = true;
     const double lowSplit = 300.0, persistTauS = 1.5, guardDb = 12.0, lowEnvOct = 0.5;
     double fs = 48000;
     int lowProtEnd = 0;
     int nch = 2, hop = 256, delay = 2560, medW = 25, lowEvery = 4, lead = 64, lowFactor = 4;
+    bool live = false;
+    double winFall = 0.5;
     FrankenParams prm;
 
     Spec A, L;
@@ -431,7 +464,13 @@ private:
         s.n = n; s.nb = n / 2 + 1; s.binHz = fs / n;
         s.fft.setup (n);
         s.win.resize (n);
-        for (int i = 0; i < n; ++i) s.win[i] = 0.5 - 0.5 * std::cos (2.0 * M_PI * i / n);   // periodic Hann
+        // periodic Hann; in Live mode an asymmetric Hann (long rise, short fall) whose weight sits
+        // near the newest samples, so the analysis reacts sooner at the same frequency resolution
+        const int fall = std::clamp ((int) std::lround (n * winFall), 8, n / 2);
+        const int rise = n - fall;
+        for (int i = 0; i < n; ++i)
+            s.win[i] = i < rise ? 0.5 - 0.5 * std::cos (M_PI * i / rise)
+                                : 0.5 + 0.5 * std::cos (M_PI * (i - rise) / fall);
         s.fbins.resize (s.nb);
         for (int k = 0; k < s.nb; ++k) s.fbins[k] = k * s.binHz;
         for (auto* v : { &s.frame }) v->assign (n, 0.0);
@@ -521,7 +560,7 @@ private:
         {
             const double p = s.re[k] * s.re[k] + s.im[k] * s.im[k] + 1e-14;
             s.Psm[k] = s.init ? aSp * s.Psm[k] + (1 - aSp) * p : p;
-            s.Pdb[k] = 10 * std::log10 (s.Psm[k]);
+            s.Pdb[k] = fastDb10 (s.Psm[k]);
         }
         s.init = true;
     }
@@ -558,7 +597,7 @@ private:
         {
             const double x = s.binToLg[k]; const int i0 = std::min ((int) x, nlg - 2); const double fr = std::clamp (x - i0, 0.0, 1.0);
             const double med = medG[i0] * (1 - fr) + medG[i0 + 1] * fr;
-            const double envPm = 10 * std::log10 ((s.cs[s.hiS[k]] - s.cs[s.loS[k]]) / (s.hiS[k] - s.loS[k]));
+            const double envPm = fastDb10 ((s.cs[s.hiS[k]] - s.cs[s.loS[k]]) / (s.hiS[k] - s.loS[k]));
             s.env[k] = med;
             if (s.ok[k]) scratch[nOk++] = envPm - med;
         }
@@ -668,7 +707,7 @@ private:
     // single-pitch cepstrum (dense harmonic tones) + its upper envelope
     void detectCepstralPitch (Spec& s, double& f0, double& conf)
     {
-        for (int k = 0; k < s.nb; ++k) scratch[k] = std::log (std::sqrt (s.re[k] * s.re[k] + s.im[k] * s.im[k]) + 1e-12);
+        for (int k = 0; k < s.nb; ++k) scratch[k] = fastLn (std::sqrt (s.re[k] * s.re[k] + s.im[k] * s.im[k]) + 1e-12);
         for (int k = 0; k < s.n; ++k) s.frame[k] = scratch[k < s.nb ? k : s.n - k];
         s.fft.forward (s.frame.data(), s.re.data(), s.im.data());     // real & even -> forward = N * inverse
         const int qmin = (int) (fs / 1000.0), qmax = std::min ((int) (fs / 60.0), s.nb - 1);
@@ -808,7 +847,7 @@ private:
 
             // broad layer (main spectrum)
             A.cs[0] = 0; for (int k = 0; k < A.nb; ++k) A.cs[k + 1] = A.cs[k] + A.Psm[k];
-            for (int k = 0; k < A.nb; ++k) envB[k] = 10 * std::log10 ((A.cs[hiB[k]] - A.cs[loB[k]]) / (hiB[k] - loB[k]));
+            for (int k = 0; k < A.nb; ++k) envB[k] = fastDb10 ((A.cs[hiB[k]] - A.cs[loB[k]]) / (hiB[k] - loB[k]));
             for (int b = 0; b < kBands; ++b)
             {
                 if (bandE[b] <= bandS[b]) continue;
