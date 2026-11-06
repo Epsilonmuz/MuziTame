@@ -372,10 +372,13 @@ void AnalyzerDisplay::paint (juce::Graphics& g)
     const float pixelScale = juce::jmax (1.0f, g.getInternalContext().getPhysicalPixelScaleFactor());
     const int W = juce::jmax (1, juce::roundToInt ((float) getWidth() * pixelScale));
     const int H = juce::jmax (1, juce::roundToInt ((float) getHeight() * pixelScale));
+    // The bitmap is the platform's own image type (so the system can show it without converting it),
+    // but JUCE's software renderer draws into its pixels directly.
     if (! frame.isValid() || frame.getWidth() != W || frame.getHeight() != H)
-        frame = juce::Image (juce::Image::RGB, W, H, false, juce::SoftwareImageType());
+        frame = juce::Image (juce::Image::RGB, W, H, false, juce::NativeImageType());
     {
-        juce::Graphics fg (frame);
+        juce::LowLevelGraphicsSoftwareRenderer renderer (frame);
+        juce::Graphics fg (renderer);
         fg.addTransform (juce::AffineTransform::scale (pixelScale));
         paintContent (fg, pixelScale);
     }
