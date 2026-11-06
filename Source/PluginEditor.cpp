@@ -757,5 +757,5 @@ void MuziTameEditor::paint (juce::Graphics& g)
     g.setFont (font (10.5f * s));
     juce::ignoreUnused (ms);
     g.drawText (footerText(), footer.reduced ((int) (18 * s), 0), juce::Justification::centredLeft);
-    g.drawText ("v0.6.0   |   double-click any control to reset", footer.reduced ((int) (18 * s), 0), juce::Justification::centredRight);
+    g.drawText ("v0.6.1   |   double-click any control to reset", footer.reduced ((int) (18 * s), 0), juce::Justification::centredRight);
 }

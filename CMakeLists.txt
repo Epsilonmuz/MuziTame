@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.22)
-project(MuziTame VERSION 0.6.0)
+project(MuziTame VERSION 0.6.1)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_OSX_DEPLOYMENT_TARGET "12.0" CACHE STRING "")
@@ -26,7 +26,7 @@ endif()
 juce_add_plugin(MuziTame
     COMPANY_NAME "Muzi"
     PRODUCT_NAME "Muzi Tame"
-    VERSION 0.6.0
+    VERSION 0.6.1
     PLUGIN_MANUFACTURER_CODE Muzi
     PLUGIN_CODE MzTm
     FORMATS ${MT_FORMATS}

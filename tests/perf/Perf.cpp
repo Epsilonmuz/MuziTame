@@ -97,6 +97,8 @@ int main()
     std::printf ("| Analyser | Update per frame | Draw per frame | Total per second | Share of one core |\n|---|---|---|---|---|\n");
     const char* qName[] = { "Full", "Light", "Off" };
     int pos = 0;
+    // one window-sized native bitmap reused for every frame, like a window's backing store
+    juce::Image img (juce::Image::ARGB, disp.getWidth() * 2, disp.getHeight() * 2, true, juce::NativeImageType());
     for (int q = 0; q < 3; ++q)
     {
         ed->benchSetAnalyser (q);
@@ -117,7 +119,6 @@ int main()
             tUpd += std::chrono::duration<double, std::milli> (t1 - t0).count();
             if (f % every == 0)
             {
-                juce::Image img (juce::Image::ARGB, disp.getWidth() * 2, disp.getHeight() * 2, true, juce::NativeImageType());
                 const auto t2 = Clock::now();
                 { juce::Graphics g (img); g.addTransform (juce::AffineTransform::scale (2.0f)); disp.paintEntireComponent (g, true); }
                 tDraw += std::chrono::duration<double, std::milli> (Clock::now() - t2).count();
