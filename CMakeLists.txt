@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.22)
-project(MuziTame VERSION 0.5.0)
+project(MuziTame VERSION 0.5.1)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_OSX_DEPLOYMENT_TARGET "12.0" CACHE STRING "")
@@ -26,7 +26,7 @@ endif()
 juce_add_plugin(MuziTame
     COMPANY_NAME "Muzi"
     PRODUCT_NAME "Muzi Tame"
-    VERSION 0.5.0
+    VERSION 0.5.1
     PLUGIN_MANUFACTURER_CODE Muzi
     PLUGIN_CODE MzTm
     FORMATS ${MT_FORMATS}
@@ -76,5 +76,16 @@ if(MT_BUILD_TEST_HOST)
         JucePlugin_Name="Muzi Tame" JucePlugin_Build_Standalone=0)
     target_link_libraries(MuziSnapshot PRIVATE juce::juce_dsp)
     target_link_libraries(MuziSnapshot PRIVATE juce::juce_audio_processors juce::juce_audio_formats juce::juce_gui_basics
+        PUBLIC juce::juce_recommended_config_flags)
+endif()
+
+# Editor CPU benchmark (not part of the plugin)
+if(MT_BUILD_TEST_HOST)
+    juce_add_console_app(MuziUiBench PRODUCT_NAME "MuziUiBench")
+    target_sources(MuziUiBench PRIVATE tests/snapshot/UiBench.cpp Source/PluginProcessor.cpp Source/PluginEditor.cpp)
+    target_include_directories(MuziUiBench PRIVATE Source)
+    target_compile_definitions(MuziUiBench PRIVATE MUZI_USE_JUCE_FFT=1 JUCE_WEB_BROWSER=0 JUCE_USE_CURL=0
+        JucePlugin_Name="Muzi Tame" JucePlugin_Build_Standalone=0)
+    target_link_libraries(MuziUiBench PRIVATE juce::juce_dsp juce::juce_audio_processors juce::juce_audio_formats juce::juce_gui_basics
         PUBLIC juce::juce_recommended_config_flags)
 endif()

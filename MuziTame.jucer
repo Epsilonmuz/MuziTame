@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 
 <JUCERPROJECT id="KLzdoc" name="Muzi Tame" projectType="audioplug" useAppConfig="0"
-              addUsingNamespaceToJuceHeader="0" jucerFormatVersion="1" version="0.5.0"
+              addUsingNamespaceToJuceHeader="0" jucerFormatVersion="1" version="0.5.1"
               companyName="Muzi" companyCopyright="Edison" bundleIdentifier="com.muzi.muzitame"
               pluginFormats="buildAU,buildStandalone,buildVST3" pluginCharacteristicsValue=""
               pluginName="Muzi Tame" pluginDesc="Automatic resonance suppressor"

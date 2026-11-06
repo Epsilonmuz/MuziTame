@@ -114,6 +114,9 @@ private:
         }
         tw.resize (m / 2);
         for (int i = 0; i < m / 2; ++i) tw[i] = std::polar (1.0, -2.0 * M_PI * i / m);
+        twr.resize (m / 2); twi.resize (m / 2);
+        for (int i = 0; i < m / 2; ++i) { twr[i] = tw[i].real(); twi[i] = tw[i].imag(); }
+        zre.resize (m); zim.resize (m);
         twN.resize (m + 1);
         for (int k = 0; k <= m; ++k) twN[k] = std::polar (1.0, -2.0 * M_PI * k / n);
         zb.resize (m);
@@ -121,29 +124,40 @@ private:
     void forward (const double* x, double* outRe, double* outIm)
     {
         const int m = n / 2;
-        for (int i = 0; i < m; ++i) zb[rev[i]] = { x[2 * i], x[2 * i + 1] };
-        for (int len = 2; len <= m; len <<= 1)
+        double* zr = zre.data(); double* zi = zim.data();
+        for (int i = 0; i < m; ++i) { zr[rev[i]] = x[2 * i]; zi[rev[i]] = x[2 * i + 1]; }
+        for (int i = 0; i < m; i += 2)                       // first stage: twiddle is 1
+        {
+            const double ar = zr[i + 1], ai = zi[i + 1];
+            zr[i + 1] = zr[i] - ar; zi[i + 1] = zi[i] - ai; zr[i] += ar; zi[i] += ai;
+        }
+        for (int len = 4; len <= m; len <<= 1)
         {
             const int step = m / len, half = len / 2;
             for (int s0 = 0; s0 < m; s0 += len)
                 for (int k = 0; k < half; ++k)
                 {
-                    const std::complex<double> t = zb[s0 + k + half] * tw[k * step];
-                    zb[s0 + k + half] = zb[s0 + k] - t;
-                    zb[s0 + k] += t;
+                    const double wr = twr[k * step], wi = twi[k * step];
+                    const int a = s0 + k, b = a + half;
+                    const double tr = zr[b] * wr - zi[b] * wi, ti = zr[b] * wi + zi[b] * wr;
+                    zr[b] = zr[a] - tr; zi[b] = zi[a] - ti;
+                    zr[a] += tr; zi[a] += ti;
                 }
         }
         for (int k = 0; k <= m; ++k)
         {
-            const std::complex<double> a = zb[k == m ? 0 : k], b = std::conj (zb[k == 0 ? 0 : m - k]);
-            const std::complex<double> xe = 0.5 * (a + b), xo = std::complex<double> (0, -0.5) * (a - b);
-            const std::complex<double> X = xe + twN[k] * xo;
-            outRe[k] = X.real(); outIm[k] = X.imag();
+            const int ia = k == m ? 0 : k, ib = k == 0 ? 0 : m - k;
+            const double ar = zr[ia], ai = zi[ia], br = zr[ib], bi = -zi[ib];
+            const double xer = 0.5 * (ar + br), xei = 0.5 * (ai + bi);
+            const double xor_ = 0.5 * (ai - bi), xoi = -0.5 * (ar - br);
+            outRe[k] = xer + twN[k].real() * xor_ - twN[k].imag() * xoi;
+            outIm[k] = xei + twN[k].real() * xoi + twN[k].imag() * xor_;
         }
     }
 private:
     std::vector<int> rev;
     std::vector<std::complex<double>> tw, twN, zb;
+    std::vector<double> twr, twi, zre, zim;
 #endif
 };
 
@@ -174,6 +188,7 @@ public:
 
         setupSpec (A, nfft);
         setupSpec (L, nfft * lowFactor);
+        for (auto* v : { &Lp.Pdb, &Lp.dev, &Lp.prot, &Lp.harm }) v->assign (L.nb, 0.0);
         A.medW = medW;
         L.medW = std::max (3, ((int) (lowEnvOct * 48.0)) | 1);   // wider: low bumps are wide in Hz
         ring.assign (L.n, 0.0);
@@ -194,6 +209,8 @@ public:
             poolS[i] = regS[a];  poolE[i] = regE[b];
             poolSL[i] = regSL[a]; poolEL[i] = regEL[b];
         }
+        lowProtEnd = 0;
+        for (int i = 0; i < kNarrow; ++i) if (useL[i]) lowProtEnd = std::max ({ lowProtEnd, poolEL[i] + 1, regEL[i] + 1 });
 
         // broad layer: fixed bells + ridge least squares  M = (BtB + lI)^-1 Bt
         auto bc = erbCenters (kBands, fLo, fHi);
@@ -234,6 +251,7 @@ public:
             std::fill (s->harm.begin(), s->harm.end(), 0.0);
         }
         pitchF0 = 100.0; pitchConf = 0.0; nF0 = 0; nF0L = 0;
+        Lp.ready = false;
         envFast = envSlow = transient = 0.0;
         for (int i = 0; i < kNarrow; ++i) { grN[i] = 0; fqN[i] = regC[i]; }
         for (int i = 0; i < kBands; ++i) grB[i] = 0;
@@ -296,22 +314,25 @@ public:
             if (++ctrlCount >= kCtrl) { ctrlCount = 0; updateCoeffs(); }
             rampPos = std::min (rampPos + 1, hop);
 
-            for (int c = 0; c < nch; ++c)
+            float dry[kMaxCh]; double v[kMaxCh];
+            for (int c = 0; c < nch; ++c) { dry[c] = dl[c][dlPos]; dl[c][dlPos] = ch[c][i]; v[c] = dry[c]; }
+            for (int f = 0; f < kFilters; ++f)
             {
-                const float dry = dl[c][dlPos];
-                dl[c][dlPos] = ch[c][i];
-                double v = dry;
-                for (int f = 0; f < kFilters; ++f)
+                const double a1 = ca1[f], a2 = ca2[f], a3 = ca3[f], m1 = cm1[f];
+                for (int c = 0; c < nch; ++c)
                 {
-                    const double v3 = v - s2[f][c];
-                    const double v1 = ca1[f] * s1[f][c] + ca2[f] * v3;
-                    const double v2 = s2[f][c] + ca2[f] * s1[f][c] + ca3[f] * v3;
+                    const double v3 = v[c] - s2[f][c];
+                    const double v1 = a1 * s1[f][c] + a2 * v3;
+                    const double v2 = s2[f][c] + a2 * s1[f][c] + a3 * v3;
                     s1[f][c] = 2.0 * v1 - s1[f][c];
                     s2[f][c] = 2.0 * v2 - s2[f][c];
-                    v = v + cm1[f] * v1;
+                    v[c] = v[c] + m1 * v1;
                 }
-                const float wet = prm.delta ? (float) (dry - v) : (float) v;
-                ch[c][i] = prm.mix * wet + (1.0f - prm.mix) * dry;
+            }
+            for (int c = 0; c < nch; ++c)
+            {
+                const float wet = prm.delta ? (float) (dry[c] - v[c]) : (float) v[c];
+                ch[c][i] = prm.mix * wet + (1.0f - prm.mix) * dry[c];
             }
             dlPos = (dlPos + 1) % delay;
         }
@@ -339,6 +360,7 @@ private:
     bool useUpperEnv = true;
     const double lowSplit = 300.0, persistTauS = 1.5, guardDb = 12.0, lowEnvOct = 0.5;
     double fs = 48000;
+    int lowProtEnd = 0;
     int nch = 2, hop = 256, delay = 2560, medW = 25, lowEvery = 4, lead = 64, lowFactor = 4;
     FrankenParams prm;
 
@@ -358,6 +380,14 @@ private:
     int ringPos = 0, dlPos = 0, hopCount = 0, ctrlCount = 0, rampPos = 0, hopIndex = 0;
     double pitchF0 = 100.0, pitchConf = 0.0;
     double f0s[kMaxPitches], f0sL[kMaxPitches]; int nF0 = 0, nF0L = 0;
+    // the finished low spectrum the narrow layer reads (published every lowEvery hops)
+    struct LowPublished { std::vector<double> Pdb, dev, prot, harm; bool ready = false; } Lp;
+    struct View { const double *Pdb, *dev, *prot, *harm, *fbins; int nb; double binHz; };
+    void publishLow()
+    {
+        Lp.Pdb = L.Pdb; Lp.dev = L.dev; Lp.prot = L.prot; Lp.harm = L.harm;   // same sizes: no allocation
+        Lp.ready = true;
+    }
     double pkF[kMaxPeaks], pkH[kMaxPeaks]; bool pkUsed[kMaxPeaks];
     double envFast = 0, envSlow = 0, transient = 0;
     double grN[kNarrow], fqN[kNarrow], grB[kBands];
@@ -506,12 +536,22 @@ private:
             const int k0 = std::min ((int) x, s.nb - 2); const double fr = x - k0;
             pg[i] = s.Pdb[k0] * (1 - fr) + s.Pdb[k0 + 1] * fr;
         }
+        // running median over the log grid: keep the window sorted and slide it
+        // (one removal + one insertion per step instead of a selection per point)
         const int w = s.medW, h = w / 2;
+        double* win = medWin.data();
+        for (int j = 0; j < w; ++j) win[j] = pg[std::clamp (j - h, 0, nlg - 1)];
+        std::sort (win, win + w);
         for (int i = 0; i < nlg; ++i)
         {
-            for (int j = 0; j < w; ++j) medWin[j] = pg[std::clamp (i - h + j, 0, nlg - 1)];
-            std::nth_element (medWin.begin(), medWin.begin() + h, medWin.begin() + w);
-            medG[i] = medWin[h];
+            medG[i] = win[h];
+            if (i + 1 == nlg) break;
+            const double out = pg[std::clamp (i - h, 0, nlg - 1)], in = pg[std::clamp (i - h + w, 0, nlg - 1)];
+            if (out == in) continue;
+            int p = (int) (std::lower_bound (win, win + w, out) - win);
+            if (in > out) { while (p + 1 < w && win[p + 1] < in) { win[p] = win[p + 1]; ++p; } }
+            else          { while (p > 0 && win[p - 1] > in)     { win[p] = win[p - 1]; --p; } }
+            win[p] = in;
         }
         int nOk = 0;
         for (int k = 0; k < s.nb; ++k)
@@ -535,9 +575,10 @@ private:
     }
 
     // protection 0..1 per bin: partial of a detected note, or a peak that hops around
-    void computeProtection (Spec& s)
+    void computeProtection (Spec& s, int end = -1)
     {
-        for (int k = 0; k < s.nb; ++k)
+        if (end < 0 || end > s.nb) end = s.nb;
+        for (int k = 0; k < end; ++k)
         {
             double occMax = 0.0;
             for (int j = s.loP[k]; j < s.hiP[k]; ++j) occMax = std::max (occMax, s.occ[j]);
@@ -552,7 +593,7 @@ private:
                     if (h < 1 || h > 16) continue;
                     const double tol = std::max (1.5 * s.binHz, 0.006 * h * list[p]);
                     const double d = (f - h * list[p]) / tol;
-                    harm = std::max (harm, std::exp (-d * d));
+                    if (d * d < 40.0) harm = std::max (harm, std::exp (-d * d));   // exp(-40) < 1e-17
                 }
             };
             addHarm (f0s, nF0);
@@ -677,7 +718,10 @@ private:
         computeSpectrum (A, aSp);
         double pmax = -1e9;
         for (int k = 0; k < A.nb; ++k) pmax = std::max (pmax, A.Pdb[k]);
-        const bool doLow = (hopIndex % lowEvery) == 0;
+        // The long low-end spectrum is 4x the work of the main one. Instead of doing it all
+        // on one hop (a CPU spike every 4th hop that small host buffers cannot absorb) its
+        // stages run on successive hops and the finished result is published on the last.
+        const int lowPhase = hopIndex % lowEvery;
         const bool doPitch = (hopIndex & 1) == 0;
         ++hopIndex;
 
@@ -690,12 +734,9 @@ private:
         {
             computeEnvelope (A);
             updateOccupancy (A, 1);
-            if (doLow)
-            {
-                computeSpectrum (L, coef (specSmoothMs, lowEvery));
-                computeEnvelope (L);
-                updateOccupancy (L, lowEvery);
-            }
+            // low spectrum, one stage per hop: transform, envelope, then notes + protection
+            if (lowPhase == 1) computeSpectrum (L, coef (specSmoothMs, lowEvery));
+            if (lowPhase == 1 && L.init) { computeEnvelope (L); updateOccupancy (L, lowEvery); }
             if (guard > 0)
             {
                 if (doPitch)
@@ -704,24 +745,34 @@ private:
                     detectCepstralPitch (A, pitchF0, pitchConf);       // overwrites A.re/A.im (not needed after)
                 }
                 if (useUpperEnv && pitchConf > 0) applyUpperEnvelope (A, pitchF0, guard * pitchConf);
-                if (doLow) detectPitches (L, 30.0, 400.0, 2000.0, f0sL, nF0L);   // bass notes
-                if (doPitch) computeProtection (A);          // protection moves slowly (1.5 s persistence)
-                if (doLow) computeProtection (L);
+                if (! doPitch) computeProtection (A);        // protection moves slowly (1.5 s persistence)
             }
             else
             {
-                for (Spec* sp : { &A, &L })
+                std::fill (A.prot.begin(), A.prot.end(), 0.0);
+                std::fill (A.harm.begin(), A.harm.end(), 0.0);
+            }
+            if (lowPhase == 2 && L.init)
+            {
+                if (guard > 0)
                 {
-                    std::fill (sp->prot.begin(), sp->prot.end(), 0.0);
-                    std::fill (sp->harm.begin(), sp->harm.end(), 0.0);
+                    detectPitches (L, 30.0, 400.0, 2000.0, f0sL, nF0L);   // bass notes
+                    computeProtection (L, lowProtEnd);   // only the bins the low regions read
                 }
+                else
+                {
+                    std::fill (L.prot.begin(), L.prot.end(), 0.0);
+                    std::fill (L.harm.begin(), L.harm.end(), 0.0);
+                }
+                publishLow();
             }
 
             // narrow layer
             for (int i = 0; i < kNarrow; ++i)
             {
-                Spec& s = useL[i] ? L : A;
-                if (useL[i] && ! L.init) continue;
+                const View s = useL[i] ? View { Lp.Pdb.data(), Lp.dev.data(), Lp.prot.data(), Lp.harm.data(), L.fbins.data(), L.nb, L.binHz }
+                                       : View { A.Pdb.data(), A.dev.data(), A.prot.data(), A.harm.data(), A.fbins.data(), A.nb, A.binHz };
+                if (useL[i] && ! Lp.ready) continue;
                 const int rs = useL[i] ? regSL[i] : regS[i], re_ = useL[i] ? regEL[i] : regE[i];
                 const int ps = useL[i] ? poolSL[i] : poolS[i], pe = useL[i] ? poolEL[i] : poolE[i];
                 if (re_ <= rs) continue;

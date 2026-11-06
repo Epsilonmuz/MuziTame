@@ -1,8 +1,24 @@
-# Muzi Tame v0.5 — FrankenTame engine
+# Muzi Tame v0.5.1 — FrankenTame engine
 
 Automatic resonance suppressor (JUCE, VST3 / AU / Standalone). Full user guide: `Muzi Tame Manual.pdf`.
 
 ![Muzi Tame](screenshot.png)
+
+## What's new in v0.5.1 (performance)
+Same sound, much lighter on the computer. On the Resonance Lab tests every score matches v0.5 within normal run-to-run variation.
+- **No more CPU spikes.** v0.5 did all of the long low-end analysis on one hop out of four, so every 11 ms one audio block cost about 3x the others. At small host buffers that caused dropouts and a sluggish Mac. The work is now spread over consecutive hops. The worst hop at 48 kHz went from 34% to 15% of its time budget, and at 96 kHz High-res from 111% to 24%.
+- **About 35% less CPU on average** (realtime factor 4.7x -> 7.5x on the Lab set).
+  - A sliding running median replaces a sort for every point.
+  - Note protection is only worked out for the low-end bins that actually use it.
+  - The two channels' filter chains run side by side.
+- **Lighter GUI.**
+  - The analyser draws its background from a cached image.
+  - The cut curve is calculated from the filter coefficients once per frame, not with trig for every pixel. That makes the update 3x faster.
+  - The display is opaque, so the window behind it is no longer redrawn 30 times a second.
+  - Fewer points per curve.
+  - Meters and the footer only redraw when they change.
+  - Nothing redraws once the audio stops.
+- `tests/snapshot/UiBench.cpp` (CMake target `MuziUiBench`) measures the GUI's cost per frame.
 
 ## What's new in v0.5
 - **Polyphonic Tonal Guard.** v0.4 only protected the harmonics of one note, so melodies, arpeggios and chords were cut as if they were resonances. v0.5 finds up to four notes at once (harmonic summation with estimate-and-cancel), also on a long low-end spectrum for bass notes, and tells resonances from melody by how long a peak stays at one frequency. Note partials are protected in proportion, however loud they are.

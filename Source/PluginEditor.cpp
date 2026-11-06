@@ -90,10 +90,11 @@ void PowerButton::paintButton (juce::Graphics& g, bool over, bool)
 void LevelMeter::tick()
 {
     const float db = juce::Decibels::gainToDecibels (source.load(), -60.0f);
+    const float before = shown, holdBefore = hold;
     shown = db > shown ? db : juce::jmax (db, shown - 1.2f);
     if (db >= hold) { hold = db; holdTicks = 45; }
     else if (--holdTicks <= 0) hold = juce::jmax (-60.0f, hold - 0.8f);
-    repaint();
+    if (std::abs (shown - before) > 0.05f || std::abs (hold - holdBefore) > 0.05f) repaint();   // silent meters cost nothing
 }
 
 void LevelMeter::paint (juce::Graphics& g)
@@ -121,7 +122,7 @@ void LevelMeter::paint (juce::Graphics& g)
 }
 
 // ================================================================ analyser
-AnalyzerDisplay::AnalyzerDisplay (MuziTameProcessor& p) : proc (p) {}
+AnalyzerDisplay::AnalyzerDisplay (MuziTameProcessor& p) : proc (p) { setOpaque (true); }
 
 juce::Rectangle<float> AnalyzerDisplay::plot() const
 {
@@ -153,6 +154,7 @@ void AnalyzerDisplay::resized()
 {
     const auto n = (size_t) juce::jmax (8, (int) plot().getWidth());
     colIn.assign (n, -120.0f); colOut.assign (n, -120.0f); colCut.assign (n, 0.0f); colBroad.assign (n, 0.0f);
+    staticScale = 0.0f; cosRate = 0.0;
 }
 
 void AnalyzerDisplay::computeSpectrum (std::vector<float>& ring, std::vector<float>& spec)
@@ -208,6 +210,10 @@ void AnalyzerDisplay::update()
     for (int i = juce::jmax (0, nOut - kN); i < nOut; ++i) { ringOut[(size_t) pos2] = scratch[(size_t) i]; pos2 = (pos2 + 1) % kN; }
     ringPos = pos;
 
+    // nothing playing: let the curves fall for ~3 s, then stop redrawing until audio returns
+    idleFrames = (nIn == 0 && nOut == 0) ? idleFrames + 1 : 0;
+    if (idleFrames > 90) return;
+
     computeSpectrum (ringIn, specIn);
     computeSpectrum (ringOut, specOut);
     toColumns (specIn, colIn);
@@ -215,24 +221,44 @@ void AnalyzerDisplay::update()
 
     const auto& eng = proc.activeEngine();
     const double fs = proc.getCurrentSampleRate(), q = proc.getSharpness();
+    const auto p = plot();
+    const size_t n = colCut.size();
+    if (std::abs (cosRate - fs) > 0.5 || cosW.size() != n)
+    {
+        cosW.resize (n); cos2W.resize (n);
+        for (size_t c = 0; c < n; ++c)
+        {
+            const double w = 2.0 * juce::MathConstants<double>::pi * juce::jmin (freqForX (p.getX() + (float) c), fs * 0.49) / fs;
+            cosW[c] = std::cos (w); cos2W[c] = std::cos (2.0 * w);
+        }
+        cosRate = fs;
+    }
+    std::fill (colCut.begin(), colCut.end(), 0.0f);
+    std::fill (colBroad.begin(), colBroad.end(), 0.0f);
+    // |H(e^jw)|^2 of an RBJ bell from its coefficients: the same curve as bellResponseDb(),
+    // with the per-filter maths done once instead of once per screen column
+    auto addBell = [&] (double fc, double bq, double gainDb, bool broadLayer)
+    {
+        const double A_ = std::pow (10.0, gainDb / 40), w0 = 2 * juce::MathConstants<double>::pi * fc / fs, al = std::sin (w0) / (2 * bq);
+        const double b0 = 1 + al * A_, b1 = -2 * std::cos (w0), b2 = 1 - al * A_;
+        const double a0 = 1 + al / A_, a1 = b1, a2 = 1 - al / A_;
+        const double nb0 = b0 * b0 + b1 * b1 + b2 * b2, nb1 = 2 * b1 * (b0 + b2), nb2 = 2 * b0 * b2;
+        const double na0 = a0 * a0 + a1 * a1 + a2 * a2, na1 = 2 * a1 * (a0 + a2), na2 = 2 * a0 * a2;
+        for (size_t c = 0; c < n; ++c)
+        {
+            const double num = nb0 + nb1 * cosW[c] + nb2 * cos2W[c], den = na0 + na1 * cosW[c] + na2 * cos2W[c];
+            const float db = (float) (10.0 * std::log10 (juce::jmax (num, 1e-24) / juce::jmax (den, 1e-24)));
+            colCut[c] += db;
+            if (broadLayer) colBroad[c] += db;
+        }
+    };
     float gB[E::kBroad];
     for (int i = 0; i < E::kNarrow; ++i) { nGainN[i] = eng.meterGainN[i].load(); nFreqN[i] = eng.meterFreqN[i].load(); }
     for (int j = 0; j < E::kBroad; ++j) gB[j] = eng.meterGainB[j].load();
-    const auto p = plot();
-    for (size_t c = 0; c < colCut.size(); ++c)
-    {
-        const double f = freqForX (p.getX() + (float) c);
-        double sumN = 0, sumB = 0;
-        if (f < fs * 0.49)
-        {
-            for (int i = 0; i < E::kNarrow; ++i)
-                if (nGainN[i] < -0.05f) sumN += E::bellResponseDb (f, nFreqN[i], q, nGainN[i], fs);
-            for (int j = 0; j < E::kBroad; ++j)
-                if (std::abs (gB[j]) > 0.02f) sumB += E::bellResponseDb (f, eng.getBroadFc (j), eng.getBroadQ (j), gB[j], fs);
-        }
-        colCut[c] = (float) (sumN + sumB);
-        colBroad[c] = (float) sumB;
-    }
+    for (int i = 0; i < E::kNarrow; ++i) if (nGainN[i] < -0.05f) addBell (nFreqN[i], q, nGainN[i], false);
+    for (int j = 0; j < E::kBroad; ++j) if (std::abs (gB[j]) > 0.02f) addBell (eng.getBroadFc (j), eng.getBroadQ (j), gB[j], true);
+    // columns above Nyquist show no cut (as before)
+    for (size_t c = 0; c < n; ++c) if (freqForX (p.getX() + (float) c) >= fs * 0.49) { colCut[c] = 0.0f; colBroad[c] = 0.0f; }
     repaint();
 }
 
@@ -291,46 +317,63 @@ void AnalyzerDisplay::mouseDoubleClick (const juce::MouseEvent& e)
     }
 }
 
+void AnalyzerDisplay::renderStaticLayer (float pixelScale)
+{
+    const auto b = getLocalBounds().toFloat();
+    const auto p = plot();
+    const float ts = textScale;
+    staticLayer = juce::Image (juce::Image::RGB, juce::jmax (1, juce::roundToInt (b.getWidth() * pixelScale)),
+                               juce::jmax (1, juce::roundToInt (b.getHeight() * pixelScale)), false);
+    staticScale = pixelScale;
+    juce::Graphics g (staticLayer);
+    g.addTransform (juce::AffineTransform::scale (pixelScale));
+    // continue the editor's background behind the rounded corners, so the display can be opaque
+    g.setGradientFill (juce::ColourGradient (col::bg0.brighter (0.05f), 0, (float) -getY(), col::bg0, 0, (float) (editorHeight - getY()), false));
+    g.fillAll();
+    juce::ColourGradient bg (col::bg1.brighter (0.04f), 0, b.getY(), col::bg0, 0, b.getBottom(), false);
+    g.setGradientFill (bg);
+    g.fillRoundedRectangle (b, 10.0f * ts);
+    g.setFont (font (10.0f * ts));
+    for (double f : { 50.0, 100.0, 200.0, 500.0, 1000.0, 2000.0, 5000.0, 10000.0 })
+    {
+        const float x = xForFreq (f);
+        g.setColour (col::line.withAlpha (0.7f));
+        g.drawVerticalLine (juce::roundToInt (x), p.getY(), p.getBottom());
+        g.setColour (col::faint);
+        g.drawText (f >= 1000 ? juce::String ((int) (f / 1000)) + "k" : juce::String ((int) f),
+                    juce::Rectangle<float> (x - 20 * ts, p.getBottom() + 3 * ts, 40 * ts, 14 * ts), juce::Justification::centred);
+    }
+    for (float db : { 0.0f, -6.0f, -12.0f, -18.0f })
+    {
+        const float y = yCut (db);
+        g.setColour (db > -0.5f ? col::faint.withAlpha (0.6f) : col::line.withAlpha (0.6f));
+        g.drawHorizontalLine (juce::roundToInt (y), p.getX(), p.getRight());
+        g.setColour (col::faint);
+        g.drawText (juce::String ((int) db), juce::Rectangle<float> (p.getRight() + 4 * ts, y - 7 * ts, 28 * ts, 14 * ts), juce::Justification::centredLeft);
+    }
+    g.setColour (col::line);
+    g.drawRoundedRectangle (b.reduced (0.5f), 10.0f * ts, 1.0f);
+}
+
 void AnalyzerDisplay::paint (juce::Graphics& g)
 {
     const auto b = getLocalBounds().toFloat();
     const auto p = plot();
     const float ts = textScale;
 
-    juce::ColourGradient bg (col::bg1.brighter (0.04f), 0, b.getY(), col::bg0, 0, b.getBottom(), false);
-    g.setGradientFill (bg);
-    g.fillRoundedRectangle (b, 10.0f * ts);
+    const float pixelScale = juce::jmax (1.0f, g.getInternalContext().getPhysicalPixelScaleFactor());
+    if (! staticLayer.isValid() || std::abs (pixelScale - staticScale) > 0.01f) renderStaticLayer (pixelScale);
+    g.drawImage (staticLayer, b);
 
     {
         juce::Graphics::ScopedSaveState clip (g);
-        juce::Path rr; rr.addRoundedRectangle (b, 10.0f * ts);
-        g.reduceClipRegion (rr);
-
-        // grid
-        g.setFont (font (10.0f * ts));
-        for (double f : { 50.0, 100.0, 200.0, 500.0, 1000.0, 2000.0, 5000.0, 10000.0 })
-        {
-            const float x = xForFreq (f);
-            g.setColour (col::line.withAlpha (0.7f));
-            g.drawVerticalLine (juce::roundToInt (x), p.getY(), p.getBottom());
-            g.setColour (col::faint);
-            g.drawText (f >= 1000 ? juce::String ((int) (f / 1000)) + "k" : juce::String ((int) f),
-                        juce::Rectangle<float> (x - 20 * ts, p.getBottom() + 3 * ts, 40 * ts, 14 * ts), juce::Justification::centred);
-        }
-        for (float db : { 0.0f, -6.0f, -12.0f, -18.0f })
-        {
-            const float y = yCut (db);
-            g.setColour (db > -0.5f ? col::faint.withAlpha (0.6f) : col::line.withAlpha (0.6f));
-            g.drawHorizontalLine (juce::roundToInt (y), p.getX(), p.getRight());
-            g.setColour (col::faint);
-            g.drawText (juce::String ((int) db), juce::Rectangle<float> (p.getRight() + 4 * ts, y - 7 * ts, 28 * ts, 14 * ts), juce::Justification::centredLeft);
-        }
+        g.reduceClipRegion (p.toNearestInt().expanded (2));
 
         const int n = (int) colIn.size();
         // input spectrum, filled
         juce::Path in;
         in.startNewSubPath (p.getX(), p.getBottom());
-        for (int c = 0; c < n; ++c) in.lineTo (p.getX() + (float) c, ySpec (colIn[(size_t) c]));
+        for (int c = 0; c < n; c = (c + 2 < n || c == n - 1) ? c + 2 : n - 1) in.lineTo (p.getX() + (float) c, ySpec (colIn[(size_t) c]));
         in.lineTo (p.getX() + (float) (n - 1), p.getBottom());
         in.closeSubPath();
         juce::ColourGradient sg (juce::Colour (0xff4a5468).withAlpha (0.55f), 0, p.getY() + p.getHeight() * 0.3f,
@@ -340,7 +383,7 @@ void AnalyzerDisplay::paint (juce::Graphics& g)
 
         // output spectrum, line
         juce::Path out;
-        for (int c = 0; c < n; ++c)
+        for (int c = 0; c < n; c = (c + 2 < n || c == n - 1) ? c + 2 : n - 1)
         {
             const float x = p.getX() + (float) c, y = ySpec (colOut[(size_t) c]);
             c == 0 ? out.startNewSubPath (x, y) : out.lineTo (x, y);
@@ -358,7 +401,7 @@ void AnalyzerDisplay::paint (juce::Graphics& g)
         const float y0 = yCut (0.0f);
         juce::Path cutLine, cutFill;
         cutFill.startNewSubPath (p.getX(), y0);
-        for (int c = 0; c < n; ++c)
+        for (int c = 0; c < n; c = (c + 2 < n || c == n - 1) ? c + 2 : n - 1)     // smooth curve: every 2nd column
         {
             const float x = p.getX() + (float) c, y = yCut (colCut[(size_t) c]);
             c == 0 ? cutLine.startNewSubPath (x, y) : cutLine.lineTo (x, y);
@@ -375,7 +418,7 @@ void AnalyzerDisplay::paint (juce::Graphics& g)
         g.strokePath (cutLine, juce::PathStrokeType (2.0f * ts, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
 
         juce::Path broadLine;
-        for (int c = 0; c < n; ++c)
+        for (int c = 0; c < n; c = (c + 2 < n || c == n - 1) ? c + 2 : n - 1)
         {
             const float x = p.getX() + (float) c, y = yCut (colBroad[(size_t) c]);
             c == 0 ? broadLine.startNewSubPath (x, y) : broadLine.lineTo (x, y);
@@ -450,8 +493,6 @@ void AnalyzerDisplay::paint (juce::Graphics& g)
         }
     }
 
-    g.setColour (col::line);
-    g.drawRoundedRectangle (b.reduced (0.5f), 10.0f * ts, 1.0f);
 }
 
 // ================================================================ editor
@@ -541,7 +582,7 @@ void MuziTameEditor::timerCallback()
     inMeter.tick();
     outMeter.tick();
     if (presetBox.getSelectedItemIndex() != proc.currentPreset) refreshPresetBox();
-    repaint (footer);
+    if (auto t = footerText(); t != shownFooter) { shownFooter = t; repaint (footer); }
 }
 
 void MuziTameEditor::refreshForSnapshot()
@@ -573,6 +614,7 @@ void MuziTameEditor::resized()
     deltaBtn.setBounds (sc (836, 14, 62, 28));
     bypassBtn.setBounds (sc (912, 14, 28, 28));
 
+    display.editorHeight = getHeight();
     display.setBounds (sc (16, 60, 928, 300));
 
     panelDyn  = sc (16, 370, 230, 200);
@@ -599,6 +641,13 @@ void MuziTameEditor::resized()
 
     for (auto* k : { &depth, &threshold, &sharpness, &attack, &release, &punch, &broad, &guard, &maxcut, &mix, &trim })
         k->resized();
+}
+
+juce::String MuziTameEditor::footerText() const
+{
+    const double rate = proc.getCurrentSampleRate();
+    const double ms = rate > 0 ? 1000.0 * proc.getLatencySamples() / rate : 0.0;
+    return "Latency " + juce::String (ms, 0) + " ms   |   " + juce::String (rate / 1000.0, 1) + " kHz";
 }
 
 void MuziTameEditor::paint (juce::Graphics& g)
@@ -652,7 +701,7 @@ void MuziTameEditor::paint (juce::Graphics& g)
     const double ms = rate > 0 ? 1000.0 * proc.getLatencySamples() / rate : 0.0;
     g.setColour (col::faint);
     g.setFont (font (10.5f * s));
-    g.drawText ("Latency " + juce::String (ms, 0) + " ms   |   " + juce::String (rate / 1000.0, 1) + " kHz",
-                footer.reduced ((int) (18 * s), 0), juce::Justification::centredLeft);
-    g.drawText ("v0.5   |   double-click any control to reset", footer.reduced ((int) (18 * s), 0), juce::Justification::centredRight);
+    juce::ignoreUnused (ms);
+    g.drawText (footerText(), footer.reduced ((int) (18 * s), 0), juce::Justification::centredLeft);
+    g.drawText ("v0.5.1   |   double-click any control to reset", footer.reduced ((int) (18 * s), 0), juce::Justification::centredRight);
 }

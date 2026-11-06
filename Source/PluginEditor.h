@@ -51,6 +51,7 @@ class AnalyzerDisplay : public juce::Component
 {
 public:
     explicit AnalyzerDisplay (MuziTameProcessor&);
+    int editorHeight = 600;                         // to continue the editor's background gradient (opaque)
     void update();                                  // called from the editor's timer (and snapshot tool)
     void paint (juce::Graphics&) override;
     void resized() override;
@@ -74,6 +75,16 @@ private:
     std::vector<float> colIn, colOut, colCut, colBroad;     // one value per display column
     float nGainN[muzi::FrankenTameEngine::kNarrow] {}, nFreqN[muzi::FrankenTameEngine::kNarrow] {};
     int hoverX = -1, dragging = 0;                  // dragging: 1 = low, 2 = high
+    // performance: static layer cached as an image, per-column cos(w)/cos(2w) for the curve maths,
+    // and no work at all while the plugin is idle
+    juce::Image staticLayer;
+    float staticScale = 0.0f;
+    void renderStaticLayer (float pixelScale);
+    std::vector<double> cosW, cos2W;
+    double cosRate = 0.0;
+    int idleFrames = 0;
+    juce::String lastFooter;
+    friend class MuziTameEditor;
 
     juce::Rectangle<float> plot() const;
     float xForFreq (double f) const;
@@ -96,6 +107,8 @@ public:
     void paint (juce::Graphics&) override;
     void resized() override;
     void refreshForSnapshot();
+    void benchFrame() { timerCallback(); }        // one GUI frame, for the CPU benchmark
+    juce::Component& benchDisplay() { return display; }
 
 private:
     void timerCallback() override;
@@ -119,6 +132,8 @@ private:
     std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment> deltaAttachment, bypassAttachment;
 
     juce::Rectangle<int> panelDyn, panelTame, panelChar, panelOut, header, footer;
+    juce::String footerText() const;
+    juce::String shownFooter;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (MuziTameEditor)
 };
