@@ -89,3 +89,15 @@ if(MT_BUILD_TEST_HOST)
     target_link_libraries(MuziUiBench PRIVATE juce::juce_dsp juce::juce_audio_processors juce::juce_audio_formats juce::juce_gui_basics
         PUBLIC juce::juce_recommended_config_flags)
 endif()
+
+# Performance report (audio blocks + display), run on real Macs by .github/workflows/perf.yml
+option(MT_BUILD_PERF "Build the MuziPerf report tool" OFF)
+if(MT_BUILD_PERF)
+    juce_add_console_app(MuziPerf PRODUCT_NAME "MuziPerf")
+    target_sources(MuziPerf PRIVATE tests/perf/Perf.cpp Source/PluginProcessor.cpp Source/PluginEditor.cpp)
+    target_include_directories(MuziPerf PRIVATE Source)
+    target_compile_definitions(MuziPerf PRIVATE MUZI_USE_JUCE_FFT=1 JUCE_WEB_BROWSER=0 JUCE_USE_CURL=0
+        JucePlugin_Name="Muzi Tame" JucePlugin_Build_Standalone=0)
+    target_link_libraries(MuziPerf PRIVATE juce::juce_dsp juce::juce_audio_processors juce::juce_audio_formats juce::juce_gui_basics
+        PUBLIC juce::juce_recommended_config_flags juce::juce_recommended_lto_flags)
+endif()

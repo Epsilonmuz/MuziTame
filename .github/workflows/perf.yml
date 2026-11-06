@@ -1,0 +1,36 @@
+# Performance report on real Macs: audio CPU per block (every mode, rate and buffer size)
+# and display cost with the native macOS renderer. Results: Actions > run > Summary.
+name: Performance report
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths: ["Source/**", "tests/perf/**", ".github/workflows/perf.yml"]
+
+jobs:
+  perf:
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [macos-15-intel, macos-15]      # Intel (like a 2019 MacBook Pro) and Apple Silicon
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - name: Machine
+        run: |
+          echo "### ${{ matrix.runner }}: $(sysctl -n machdep.cpu.brand_string), $(sysctl -n hw.ncpu) cores, macOS $(sw_vers -productVersion)" | tee -a "$GITHUB_STEP_SUMMARY"
+      - name: Build MuziPerf (Release)
+        run: |
+          cmake -B perfbuild -DCMAKE_BUILD_TYPE=Release -DMT_BUILD_PERF=ON -DMT_FORMATS_OVERRIDE=VST3
+          cmake --build perfbuild --target MuziPerf --config Release -j 4
+      - name: Run
+        run: |
+          APP=$(find perfbuild -path "*MuziPerf_artefacts*" -type f -perm -u+x -name MuziPerf | head -1)
+          "$APP" | tee perf.md
+          cat perf.md >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: perf-${{ matrix.runner }}
+          path: perf.md

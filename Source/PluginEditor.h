@@ -110,6 +110,7 @@ public:
     void refreshForSnapshot();
     void benchFrame() { timerCallback(); }        // one GUI frame, for the CPU benchmark
     juce::Component& benchDisplay() { return display; }
+    void benchSetAnalyser (int q) { setAnalyserQuality (q); }
 
 private:
     void timerCallback() override;
