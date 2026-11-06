@@ -31,6 +31,7 @@ jobs:
         run: |
           mkdir -p dist
           cp -R "Builds/MacOSX/build/Release/Muzi Tame.vst3" "Builds/MacOSX/build/Release/Muzi Tame.component" "Builds/MacOSX/build/Release/Muzi Tame.app" dist/
+          echo "Architectures:"; for f in dist/*.vst3/Contents/MacOS/* dist/*.component/Contents/MacOS/*; do lipo -archs "$f"; done || true
           cp README.md "Muzi Tame Manual.pdf" dist/ || true
           cat > dist/INSTALL.txt <<'TXT'
           1. Copy "Muzi Tame.vst3" to ~/Library/Audio/Plug-Ins/VST3/
