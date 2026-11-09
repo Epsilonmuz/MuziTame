@@ -891,28 +891,9 @@ void MuziTameEditor::paint (juce::Graphics& g)
     g.setGradientFill (bg);
     g.fillAll();
 
-    // logo mark: a resonant peak and its tamed version
-    const auto m = sc (18, 14, 30, 28).toFloat();
-    juce::Path raw, tamed;
-    raw.startNewSubPath (m.getX(), m.getBottom() - 6 * s);
-    raw.lineTo (m.getX() + 9 * s, m.getBottom() - 6 * s);
-    raw.lineTo (m.getCentreX(), m.getY());
-    raw.lineTo (m.getRight() - 9 * s, m.getBottom() - 6 * s);
-    raw.lineTo (m.getRight(), m.getBottom() - 6 * s);
-    tamed.startNewSubPath (m.getX(), m.getBottom() - 6 * s);
-    tamed.cubicTo (m.getX() + 9 * s, m.getBottom() - 6 * s, m.getCentreX() - 4 * s, m.getY() + 12 * s, m.getCentreX(), m.getY() + 12 * s);
-    tamed.cubicTo (m.getCentreX() + 4 * s, m.getY() + 12 * s, m.getRight() - 9 * s, m.getBottom() - 6 * s, m.getRight(), m.getBottom() - 6 * s);
-    g.setColour (col::faint);
-    g.strokePath (raw, juce::PathStrokeType (1.4f * s, juce::PathStrokeType::mitered, juce::PathStrokeType::rounded));
-    g.setColour (col::accent);
-    g.strokePath (tamed, juce::PathStrokeType (2.4f * s, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
-
-    g.setColour (col::text);
-    g.setFont (font (19.0f * s, true, 0.14f));
-    g.drawText ("MUZI TAME", sc (56, 11, 200, 22), juce::Justification::centredLeft);
-    g.setColour (col::faint);
-    g.setFont (font (9.5f * s, true, 0.22f));
-    g.drawText ("RESONANCE SUPPRESSOR", sc (57, 32, 200, 14), juce::Justification::centredLeft);
+    // Epsilon Sounds product mark (shared design system)
+    epsilon_ui::drawProductMark (g, sc (18, 13, 1, 1).getPosition().toFloat(), s, epsilon_ui::Tier::Muzi, "Tame", "Resonance suppressor",
+                                 [] (float h, bool b) { return font (h, b); });
 
     // control panels
     auto panel = [&] (juce::Rectangle<int> r, const juce::String& title)
