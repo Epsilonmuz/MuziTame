@@ -892,7 +892,7 @@ void MuziTameEditor::paint (juce::Graphics& g)
     g.fillAll();
 
     // Epsilon Sounds product mark (shared design system)
-    epsilon_ui::drawProductMark (g, sc (18, 13, 1, 1).getPosition().toFloat(), s, epsilon_ui::Tier::Muzi, "Tame", "Resonance suppressor",
+    epsilon_ui::drawProductMark (g, sc (18, 13, 1, 1).getPosition().toFloat(), s, epsilon_ui::Tier::Muzi, "Tame", {},
                                  [] (float h, bool b) { return font (h, b); });
 
     // control panels
