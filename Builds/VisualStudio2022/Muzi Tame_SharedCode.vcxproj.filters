@@ -5,6 +5,9 @@
     <Filter Include="Muzi Tame\Source">
       <UniqueIdentifier>{35442B41-ABBB-2E44-7D7A-B6026FEAA674}</UniqueIdentifier>
     </Filter>
+    <Filter Include="Muzi Tame\Resources">
+      <UniqueIdentifier>{F24B4E12-2E5C-2849-5498-F225383DDB77}</UniqueIdentifier>
+    </Filter>
     <Filter Include="Muzi Tame">
       <UniqueIdentifier>{EBF5DCE8-BD28-4C5D-56B2-34929811536A}</UniqueIdentifier>
     </Filter>
@@ -9851,6 +9854,9 @@
     </ClInclude>
   </ItemGroup>
   <ItemGroup>
+    <None Include="..\..\Resources\AppIcon.png">
+      <Filter>Muzi Tame\Resources</Filter>
+    </None>
     <None Include="..\..\JUCE\modules\juce_audio_devices\native\asio\LICENSE.txt">
       <Filter>JUCE Modules\juce_audio_devices\native\asio</Filter>
     </None>
@@ -9976,6 +9982,9 @@
     </None>
     <None Include="..\..\JUCE\modules\juce_gui_extra\native\typescript\webview-interop\README.md">
       <Filter>JUCE Modules\juce_gui_extra\native\typescript\webview-interop</Filter>
+    </None>
+    <None Include=".\icon.ico">
+      <Filter>JUCE Library Code</Filter>
     </None>
   </ItemGroup>
 </Project>

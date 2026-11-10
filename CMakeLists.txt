@@ -26,6 +26,7 @@ endif()
 juce_add_plugin(MuziTame
     COMPANY_NAME "Muzi"
     PRODUCT_NAME "Muzi Tame"
+    ICON_BIG "${CMAKE_CURRENT_SOURCE_DIR}/Resources/AppIcon.png"
     VERSION 0.8.1
     PLUGIN_MANUFACTURER_CODE Muzi
     PLUGIN_CODE MzTm

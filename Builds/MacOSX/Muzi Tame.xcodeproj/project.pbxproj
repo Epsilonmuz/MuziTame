@@ -57,6 +57,7 @@
 		3EC6510FE41D73580F2BC25C /* DiscRecording.framework */ = {isa = PBXBuildFile; fileRef = 6F28CC795CFB12F8EBFB53FF; };
 		40E35F735B135BEB0FBA84A3 /* include_juce_graphics_libwebp_utils.c */ = {isa = PBXBuildFile; fileRef = 748F9F2F3043F94EFA7E1764; };
 		410F18CE27519003657E4287 /* include_juce_graphics_Harfbuzz.cpp */ = {isa = PBXBuildFile; fileRef = 208CAE3868521F2B3FF4A158; };
+		41BBD4D5443F940D07334ABD /* AppIcon.icns */ = {isa = PBXBuildFile; fileRef = 424E7DC15DCF659D5FE5686E; };
 		41F27A62EFC9F2925AD15158 /* Metal.framework */ = {isa = PBXBuildFile; fileRef = B9549C721E78D712CF89C8F5; settings = { ATTRIBUTES = (Weak, ); }; };
 		42369E7770AC38A054480000 /* include_juce_graphics_libjpg_1.c */ = {isa = PBXBuildFile; fileRef = 89F041A0B37206FD5F65D74C; };
 		443C701B12853E3F8B4C5168 /* include_juce_audio_formats_opusfile.c */ = {isa = PBXBuildFile; fileRef = 320E97B8E45D98E401D1A922; };
@@ -163,6 +164,8 @@
 		320E97B8E45D98E401D1A922 /* include_juce_audio_formats_opusfile.c */ /* include_juce_audio_formats_opusfile.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; name = include_juce_audio_formats_opusfile.c; path = ../../JuceLibraryCode/include_juce_audio_formats_opusfile.c; sourceTree = SOURCE_ROOT; };
 		34E568B5F8A39C09134174E3 /* CoreMIDI.framework */ /* CoreMIDI.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = CoreMIDI.framework; path = System/Library/Frameworks/CoreMIDI.framework; sourceTree = SDKROOT; };
 		37E61871C2B165788BE9845E /* Standalone Plugin */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "Muzi Tame.app"; sourceTree = BUILT_PRODUCTS_DIR; };
+		37EC7359AF82A6557947B581 /* AppIcon.png */ /* AppIcon.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; name = AppIcon.png; path = ../../Resources/AppIcon.png; sourceTree = SOURCE_ROOT; };
+		424E7DC15DCF659D5FE5686E /* AppIcon.icns */ /* AppIcon.icns */ = {isa = PBXFileReference; lastKnownFileType = file.icns; name = AppIcon.icns; path = AppIcon.icns; sourceTree = SOURCE_ROOT; };
 		42F0826993267D9893125EFE /* juce_graphics */ /* juce_graphics */ = {isa = PBXFileReference; lastKnownFileType = folder; name = juce_graphics; path = ../../JUCE/modules/juce_graphics; sourceTree = SOURCE_ROOT; };
 		47DF999C2677BD09F11EEC34 /* include_juce_audio_utils.mm */ /* include_juce_audio_utils.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; name = include_juce_audio_utils.mm; path = ../../JuceLibraryCode/include_juce_audio_utils.mm; sourceTree = SOURCE_ROOT; };
 		48F44D21FDD21D3A6BD6728F /* juce_gui_basics */ /* juce_gui_basics */ = {isa = PBXFileReference; lastKnownFileType = folder; name = juce_gui_basics; path = ../../JUCE/modules/juce_gui_basics; sourceTree = SOURCE_ROOT; };
@@ -330,10 +333,19 @@
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
+		13600DB998379F1A0B628ACD /* Resources */ = {
+			isa = PBXGroup;
+			children = (
+				37EC7359AF82A6557947B581,
+			);
+			name = Resources;
+			sourceTree = "<group>";
+		};
 		19DA5FF13498868DAB4CC98D /* Muzi Tame */ = {
 			isa = PBXGroup;
 			children = (
 				BDBA9FCA26F478AE02C2B01A,
+				13600DB998379F1A0B628ACD,
 			);
 			name = "Muzi Tame";
 			sourceTree = "<group>";
@@ -392,6 +404,7 @@
 				106E0BC67AB1535840177C43,
 				E3B5DDF96AF752DA1A89FD9D,
 				FA173A8E21D40BD877517A46,
+				424E7DC15DCF659D5FE5686E,
 			);
 			name = Resources;
 			sourceTree = "<group>";
@@ -756,6 +769,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				532EE0FC003AE3943C3B7DDF,
+				41BBD4D5443F940D07334ABD,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -764,6 +778,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				532EE0FC003AE3943C3B7DDF,
+				41BBD4D5443F940D07334ABD,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -772,6 +787,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				532EE0FC003AE3943C3B7DDF,
+				41BBD4D5443F940D07334ABD,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
