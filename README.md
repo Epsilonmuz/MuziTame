@@ -2,6 +2,11 @@
 
 Automatic resonance suppressor (JUCE, VST3 / AU / Standalone). Full user guide: `Muzi Tame Manual.pdf`.
 
+## Install (no build needed)
+
+**Mac (Intel and Apple Silicon):** download [Muzi Tame for Mac](https://github.com/Epsilonmuz/MuziTame/releases/latest/download/Muzi-Tame-macOS-Installer.pkg). Double-click it: the VST3 goes to `/Library/Audio/Plug-Ins/VST3`, the Audio Unit to `/Library/Audio/Plug-Ins/Components` and the standalone app to Applications. Then rescan in your DAW (FL Studio: Options > Manage plugins > Find installed plugins). The first time, macOS may say it can't check the installer (it isn't notarised by Apple): click Done, then System Settings > Privacy & Security > **Open Anyway**. No Terminal commands needed. The link always gives the newest build of `main`; it is rebuilt, test-installed on GitHub's Mac and replaced on every push.
+
+
 ![Muzi Tame](screenshot.png)
 
 ## What's new in v0.8.1 (Peak Guard)
