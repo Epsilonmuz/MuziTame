@@ -17,8 +17,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Configure (CMake, bundled JUCE)
-        run: cmake -B build -G "Visual Studio 17 2022" -A x64 -DJUCE_DIR=JUCE
+      - name: Configure (CMake downloads JUCE 9.0.5)
+        run: cmake -B build -G "Visual Studio 17 2022" -A x64
 
       - name: Build (Release)
         run: cmake --build build --config Release --target MuziTame_VST3 MuziTame_Standalone --parallel
@@ -111,7 +111,7 @@ jobs:
 
       - name: Configure and build (Release)
         run: |
-          cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DJUCE_DIR=JUCE
+          cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
           cmake --build build --target MuziTame_VST3 MuziTame_Standalone
 
       - name: Validate with pluginval
