@@ -1,0 +1,157 @@
+# Builds the plugin for Windows and Linux on every push, checks it with pluginval,
+# and puts a one-click installer for each on the rolling "latest" release (main only),
+# next to the macOS installer from build.yml.
+name: Build Windows and Linux
+
+on:
+  push:
+    branches: ['**']
+  workflow_dispatch:
+
+jobs:
+  windows:
+    runs-on: windows-2022
+    permissions:
+      contents: write
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure (CMake, bundled JUCE)
+        run: cmake -B build -G "Visual Studio 17 2022" -A x64 -DJUCE_DIR=JUCE
+
+      - name: Build (Release)
+        run: cmake --build build --config Release --target MuziTame_VST3 MuziTame_Standalone --parallel
+
+      - name: Find the build
+        shell: bash
+        run: |
+          VST3=$(find build -type d -name "*.vst3" -path "*Release*" | head -1)
+          APP=$(find build -type f -name "*.exe" -path "*Standalone*" -path "*Release*" | head -1)
+          echo "VST3=$VST3" >> $GITHUB_ENV
+          echo "APP=$APP" >> $GITHUB_ENV
+          echo "VST3: $VST3"; echo "APP: $APP"
+          test -n "$VST3" && test -n "$APP"
+
+      - name: Validate with pluginval
+        shell: bash
+        run: |
+          curl -sSL -o pluginval.zip https://github.com/Tracktion/pluginval/releases/latest/download/pluginval_Windows.zip
+          unzip -q pluginval.zip
+          ./pluginval.exe --strictness-level 5 --skip-gui-tests --validate "$VST3"
+
+      - name: Package files
+        shell: bash
+        run: |
+          VERSION=$(grep -m1 -oE 'project\(MuziTame VERSION [0-9.]+' CMakeLists.txt | awk '{print $3}')
+          echo "VERSION=$VERSION" >> $GITHUB_ENV
+          mkdir -p dist
+          cp -R "$VST3" dist/
+          cp "$APP" "dist/Muzi Tame.exe"
+          cp "Muzi Tame Manual.pdf" dist/ || true
+
+      - name: Installer (puts the VST3 in C:\Program Files\Common Files\VST3)
+        shell: pwsh
+        run: |
+          $iss = @"
+          [Setup]
+          AppName=Muzi Tame
+          AppVersion=$env:VERSION
+          AppPublisher=EPSILON
+          DefaultDirName={autopf}\EPSILON\Muzi Tame
+          DisableProgramGroupPage=yes
+          OutputDir=installer
+          OutputBaseFilename=Muzi-Tame-Windows-Installer
+          ArchitecturesAllowed=x64compatible
+          ArchitecturesInstallIn64BitMode=x64compatible
+          PrivilegesRequired=admin
+          Compression=lzma2
+          SolidCompression=yes
+          [Files]
+          Source: "dist\Muzi Tame.vst3\*"; DestDir: "{commoncf64}\VST3\Muzi Tame.vst3"; Flags: recursesubdirs ignoreversion
+          Source: "dist\Muzi Tame.exe"; DestDir: "{app}"; Flags: ignoreversion
+          Source: "dist\Muzi Tame Manual.pdf"; DestDir: "{app}"; Flags: ignoreversion skipifsourcedoesntexist
+          [Icons]
+          Name: "{autoprograms}\Muzi Tame"; Filename: "{app}\Muzi Tame.exe"
+          [Run]
+          Filename: "{app}\Muzi Tame.exe"; Description: "Open the Muzi Tame app"; Flags: postinstall nowait skipifsilent unchecked
+          "@
+          Set-Content -Path tame.iss -Value $iss
+          $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
+          if (-not (Test-Path $iscc)) { choco install innosetup -y --no-progress; }
+          & $iscc tame.iss
+          if (-not (Test-Path installer\Muzi-Tame-Windows-Installer.exe)) { throw "installer missing" }
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Muzi-Tame-Windows-Installer
+          path: installer/*.exe
+
+      - name: Publish to the "latest" release (main only)
+        if: github.ref == 'refs/heads/main'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: bash .github/scripts/publish-latest.sh "Muzi Tame" installer/Muzi-Tame-Windows-Installer.exe
+
+  linux:
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: write
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq libasound2-dev libjack-jackd2-dev libfreetype6-dev libfontconfig1-dev \
+            libx11-dev libxcomposite-dev libxcursor-dev libxext-dev libxinerama-dev libxrandr-dev libxrender-dev \
+            libgl1-mesa-dev xvfb ninja-build
+
+      - name: Configure and build (Release)
+        run: |
+          cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DJUCE_DIR=JUCE
+          cmake --build build --target MuziTame_VST3 MuziTame_Standalone
+
+      - name: Validate with pluginval
+        run: |
+          VST3=$(find build -type d -name "*.vst3" | head -1); echo "VST3=$VST3" >> $GITHUB_ENV
+          curl -sSL -o pluginval.zip https://github.com/Tracktion/pluginval/releases/latest/download/pluginval_Linux.zip
+          unzip -q pluginval.zip
+          xvfb-run -a ./pluginval --strictness-level 5 --skip-gui-tests --validate "$VST3"
+
+      - name: Package (VST3 + app + install.sh)
+        run: |
+          APP=$(find build -type f -perm -u+x -name "Muzi Tame" -path "*Standalone*" | head -1)
+          P="Muzi-Tame-Linux"
+          mkdir -p "$P"
+          cp -R "$VST3" "$P/"
+          cp "$APP" "$P/Muzi Tame"
+          cp "Muzi Tame Manual.pdf" "$P/" || true
+          cat > "$P/install.sh" <<'SH'
+          #!/bin/sh
+          # Installs Muzi Tame for the current user: VST3 to ~/.vst3, the app to ~/.local/bin
+          set -e
+          cd "$(dirname "$0")"
+          mkdir -p "$HOME/.vst3" "$HOME/.local/bin"
+          rm -rf "$HOME/.vst3/Muzi Tame.vst3"
+          cp -R "Muzi Tame.vst3" "$HOME/.vst3/"
+          cp "Muzi Tame" "$HOME/.local/bin/muzi-tame"
+          chmod +x "$HOME/.local/bin/muzi-tame"
+          echo "Installed. Rescan plug-ins in your DAW (Reaper, Bitwig, Ardour...). Run the app with: muzi-tame"
+          SH
+          chmod +x "$P/install.sh"
+          mkdir -p installer
+          tar -czf installer/Muzi-Tame-Linux.tar.gz "$P"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Muzi-Tame-Linux
+          path: installer/*.tar.gz
+
+      - name: Publish to the "latest" release (main only)
+        if: github.ref == 'refs/heads/main'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: bash .github/scripts/publish-latest.sh "Muzi Tame" installer/Muzi-Tame-Linux.tar.gz
