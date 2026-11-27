@@ -15,6 +15,10 @@ cat > "$NOTES" <<MD
 **Mac:** download the \`-macOS-Installer.pkg\` and double-click it. It puts the VST3 in /Library/Audio/Plug-Ins/VST3, the Audio Unit in /Library/Audio/Plug-Ins/Components and the app in Applications, then rescan plug-ins in your DAW (FL Studio: Options > Manage plugins > Find installed plugins).
 The first time, macOS may say it can't check the installer for malware (it isn't notarised by Apple): click Done, then System Settings > Privacy & Security > Open Anyway.
 
+**Windows:** download the `-Windows-Installer.exe` and run it. It puts the VST3 in C:\Program Files\Common Files\VST3 and adds the app to the Start menu. If Windows SmartScreen warns you, click More info > Run anyway.
+
+**Linux:** download the `-Linux.tar.gz`, unpack it and run `./install.sh` (VST3 goes to ~/.vst3).
+
 **iPhone** (where there's an \`.ipa\`): open this page on the iPhone, download the \`.ipa\` and open it with SideStore, the same way as Finish Line.
 MD
 if ! gh release view "$TAG" >/dev/null 2>&1; then

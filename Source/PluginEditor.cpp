@@ -727,15 +727,16 @@ void MuziTameEditor::showSaveDialog()
     w->addButton ("Save", 1, juce::KeyPress (juce::KeyPress::returnKey));
     w->addButton ("Cancel", 0, juce::KeyPress (juce::KeyPress::escapeKey));
     auto* ed = w->getTextEditor ("name");
-    showDialog (std::move (w), [this, ed] (int r)
+    juce::Component::SafePointer<MuziTameEditor> safeThis (this);
+    showDialog (std::move (w), [this, ed, safeThis] (int r)
     {
         if (r != 1) return;
         const auto name = juce::File::createLegalFileName (ed->getText().trim());
         if (name.isEmpty()) return;
-        const auto doSave = [this, name]
+        const auto doSave = [this, name, safeThis]
         {
             if (proc.saveUserPreset (name) == juce::File())
-                juce::MessageManager::callAsync ([safe = juce::Component::SafePointer<MuziTameEditor> (this)]
+                juce::MessageManager::callAsync ([safe = safeThis]
                 {
                     if (safe != nullptr)
                         safe->showDialog (std::make_unique<juce::AlertWindow> ("Muzi Tame", "The preset could not be saved in:\n"
@@ -745,7 +746,7 @@ void MuziTameEditor::showSaveDialog()
         };
         const auto existing = MuziTameProcessor::getUserPresetFolder().getChildFile (name + MuziTameProcessor::kUserPresetExt);
         if (! existing.existsAsFile()) { doSave(); return; }
-        juce::MessageManager::callAsync ([safe = juce::Component::SafePointer<MuziTameEditor> (this), name, doSave]
+        juce::MessageManager::callAsync ([safe = safeThis, name, doSave]
         {
             if (safe == nullptr) return;
             auto c = std::make_unique<juce::AlertWindow> ("Replace preset?", "\"" + name + "\" already exists. Replace it with the current settings?",
