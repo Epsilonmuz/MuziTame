@@ -21,12 +21,12 @@ jobs:
         run: cmake -B build -G "Visual Studio 17 2022" -A x64
 
       - name: Build (Release)
-        run: cmake --build build --config Release --target MuziTame_VST3 MuziTame_Standalone --parallel
+        run: cmake --build build --config Release --target MuziTame_VST3 MuziTame_Standalone TameLite_VST3 --parallel
 
       - name: Find the build
         shell: bash
         run: |
-          VST3=$(find build -type d -name "*.vst3" -path "*Release*" | head -1)
+          VST3=$(find build -type d -name "Muzi Tame.vst3" -path "*Release*" | head -1)
           APP=$(find build -type f -name "*.exe" -path "*Standalone*" -path "*Release*" | head -1)
           echo "VST3=$VST3" >> $GITHUB_ENV
           echo "APP=$APP" >> $GITHUB_ENV
@@ -82,6 +82,14 @@ jobs:
           & $iscc tame.iss
           if (-not (Test-Path installer\Muzi-Tame-Windows-Installer.exe)) { throw "installer missing" }
 
+      - name: Free edition (Epsilon Tame Lite) zip
+        shell: bash
+        run: |
+          LITE=$(find build -type d -name "Epsilon Tame Lite.vst3" -path "*Release*" | head -1)
+          mkdir -p lite && cp -R "$LITE" lite/
+          printf 'Epsilon Tame Lite (free)\r\n\r\nCopy "Epsilon Tame Lite.vst3" into C:\\Program Files\\Common Files\\VST3 and rescan plug-ins.\r\n' > lite/INSTALL.txt
+          (cd lite && 7z a -tzip ../installer/Epsilon-Tame-Lite-Windows.zip . > /dev/null)
+
       - uses: actions/upload-artifact@v4
         with:
           name: Muzi-Tame-Windows-Installer
@@ -92,7 +100,7 @@ jobs:
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
-        run: bash .github/scripts/publish-latest.sh "Muzi Tame" installer/Muzi-Tame-Windows-Installer.exe
+        run: bash .github/scripts/publish-latest.sh "Muzi Tame" installer/Muzi-Tame-Windows-Installer.exe installer/Epsilon-Tame-Lite-Windows.zip
 
   linux:
     runs-on: ubuntu-22.04
@@ -112,11 +120,11 @@ jobs:
       - name: Configure and build (Release)
         run: |
           cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
-          cmake --build build --target MuziTame_VST3 MuziTame_Standalone
+          cmake --build build --target MuziTame_VST3 MuziTame_Standalone TameLite_VST3
 
       - name: Validate with pluginval
         run: |
-          VST3=$(find build -type d -name "*.vst3" | head -1); echo "VST3=$VST3" >> $GITHUB_ENV
+          VST3=$(find build -type d -name "Muzi Tame.vst3" | head -1); echo "VST3=$VST3" >> $GITHUB_ENV
           curl -sSL -o pluginval.zip https://github.com/Tracktion/pluginval/releases/latest/download/pluginval_Linux.zip
           unzip -q pluginval.zip
           xvfb-run -a ./pluginval --strictness-level 5 --skip-gui-tests --validate "$VST3"
@@ -144,6 +152,11 @@ jobs:
           chmod +x "$P/install.sh"
           mkdir -p installer
           tar -czf installer/Muzi-Tame-Linux.tar.gz "$P"
+          LITE=$(find build -type d -name "Epsilon Tame Lite.vst3" | head -1)
+          mkdir -p Epsilon-Tame-Lite-Linux && cp -R "$LITE" Epsilon-Tame-Lite-Linux/
+          printf '#!/bin/sh\nset -e\ncd "$(dirname "$0")"\nmkdir -p "$HOME/.vst3"\nrm -rf "$HOME/.vst3/Epsilon Tame Lite.vst3"\ncp -R "Epsilon Tame Lite.vst3" "$HOME/.vst3/"\necho Installed.\n' > Epsilon-Tame-Lite-Linux/install.sh
+          chmod +x Epsilon-Tame-Lite-Linux/install.sh
+          tar -czf installer/Epsilon-Tame-Lite-Linux.tar.gz Epsilon-Tame-Lite-Linux
 
       - uses: actions/upload-artifact@v4
         with:
@@ -154,4 +167,39 @@ jobs:
         if: github.ref == 'refs/heads/main'
         env:
           GH_TOKEN: ${{ github.token }}
-        run: bash .github/scripts/publish-latest.sh "Muzi Tame" installer/Muzi-Tame-Linux.tar.gz
+        run: bash .github/scripts/publish-latest.sh "Muzi Tame" installer/Muzi-Tame-Linux.tar.gz installer/Epsilon-Tame-Lite-Linux.tar.gz
+
+  mac-lite:
+    runs-on: macos-15
+    permissions:
+      contents: write
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build Epsilon Tame Lite (universal, VST3 + AU)
+        run: |
+          cmake -B build -G Xcode -DCMAKE_OSX_ARCHITECTURES="arm64;x86_64"
+          cmake --build build --config Release --target TameLite_VST3 TameLite_AU -- -quiet
+      - name: Zip
+        run: |
+          mkdir -p lite installer
+          cp -R "$(find build -type d -name 'Epsilon Tame Lite.vst3' -path '*Release*' | head -1)" lite/
+          cp -R "$(find build -type d -name 'Epsilon Tame Lite.component' -path '*Release*' | head -1)" lite/
+          cat > lite/INSTALL.txt <<'TXT'
+          Epsilon Tame Lite (free)
+
+          1. Copy "Epsilon Tame Lite.vst3" to ~/Library/Audio/Plug-Ins/VST3
+             and "Epsilon Tame Lite.component" to ~/Library/Audio/Plug-Ins/Components
+          2. In Terminal, run:  xattr -dr com.apple.quarantine ~/Library/Audio/Plug-Ins
+          3. Rescan plug-ins in your DAW.
+          TXT
+          (cd lite && zip -qry ../installer/Epsilon-Tame-Lite-Mac.zip .)
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Epsilon-Tame-Lite-Mac
+          path: installer/*.zip
+      - name: Publish to the "latest" release (main only)
+        if: github.ref == 'refs/heads/main'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: bash .github/scripts/publish-latest.sh "Muzi Tame" installer/Epsilon-Tame-Lite-Mac.zip

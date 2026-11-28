@@ -1,0 +1,3 @@
+# Hashes of file build rules.
+3a34742a34966cd1bb5db75f00ea19a6 CMakeFiles/MuziTame_vst3_helper
+a1dd4f95c5899c4851edbf8ec41dcaee CMakeFiles/TameLite_vst3_helper

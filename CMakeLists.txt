@@ -57,6 +57,37 @@ target_link_libraries(MuziTame
     PRIVATE juce::juce_audio_utils juce::juce_dsp
     PUBLIC juce::juce_recommended_config_flags juce::juce_recommended_lto_flags juce::juce_recommended_warning_flags)
 
+
+# Free edition (Depth, Mix, Output, Delta, Live mode, factory presets). Separate plugin ID so it never
+# replaces the full version in a session.
+option(MT_BUILD_LITE "Also build Epsilon Tame Lite" ON)
+if(MT_BUILD_LITE)
+    juce_add_plugin(TameLite
+        COMPANY_NAME "EPSILON"
+        PRODUCT_NAME "Epsilon Tame Lite"
+        BUNDLE_ID com.epsilon.tamelite
+        ICON_BIG "${CMAKE_CURRENT_SOURCE_DIR}/Resources/AppIcon.png"
+        VERSION 0.8.1
+        PLUGIN_MANUFACTURER_CODE Epsn
+        PLUGIN_CODE EtLt
+        FORMATS ${MT_FORMATS}
+        IS_SYNTH FALSE
+        NEEDS_MIDI_INPUT FALSE
+        NEEDS_MIDI_OUTPUT FALSE
+        IS_MIDI_EFFECT FALSE
+        EDITOR_WANTS_KEYBOARD_FOCUS FALSE
+        COPY_PLUGIN_AFTER_BUILD FALSE
+        VST3_CATEGORIES Fx EQ
+        AU_MAIN_TYPE kAudioUnitType_Effect)
+    target_sources(TameLite PRIVATE Source/PluginProcessor.cpp Source/PluginEditor.cpp)
+    target_include_directories(TameLite PRIVATE Source)
+    target_compile_definitions(TameLite PUBLIC TAME_LITE=1 MUZI_USE_JUCE_FFT=1 JUCE_WEB_BROWSER=0 JUCE_USE_CURL=0
+        JUCE_VST3_CAN_REPLACE_VST2=0 JUCE_DISPLAY_SPLASH_SCREEN=0)
+    target_link_libraries(TameLite
+        PRIVATE juce::juce_audio_utils juce::juce_dsp
+        PUBLIC juce::juce_recommended_config_flags juce::juce_recommended_lto_flags juce::juce_recommended_warning_flags)
+endif()
+
 # Headless VST3 host used by the tests (not part of the plugin):
 #   cmake -B build -DMT_BUILD_TEST_HOST=ON && cmake --build build --target MuziHostTest
 option(MT_BUILD_TEST_HOST "Build the headless VST3 test host" OFF)

@@ -1,0 +1,3 @@
+/home/claude/muzitame/build-lite/vst3_helpers/TameLite/CMakeFiles/vst3_helper.dir
+/home/claude/muzitame/build-lite/vst3_helpers/TameLite/CMakeFiles/edit_cache.dir
+/home/claude/muzitame/build-lite/vst3_helpers/TameLite/CMakeFiles/rebuild_cache.dir
