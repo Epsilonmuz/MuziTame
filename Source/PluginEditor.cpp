@@ -727,15 +727,16 @@ void MuziTameEditor::showSaveDialog()
     w->addButton ("Save", 1, juce::KeyPress (juce::KeyPress::returnKey));
     w->addButton ("Cancel", 0, juce::KeyPress (juce::KeyPress::escapeKey));
     auto* ed = w->getTextEditor ("name");
-    showDialog (std::move (w), [this, ed] (int r)
+    juce::Component::SafePointer<MuziTameEditor> safeThis (this);
+    showDialog (std::move (w), [this, ed, safeThis] (int r)
     {
         if (r != 1) return;
         const auto name = juce::File::createLegalFileName (ed->getText().trim());
         if (name.isEmpty()) return;
-        const auto doSave = [this, name]
+        const auto doSave = [this, name, safeThis]
         {
             if (proc.saveUserPreset (name) == juce::File())
-                juce::MessageManager::callAsync ([safe = juce::Component::SafePointer<MuziTameEditor> (this)]
+                juce::MessageManager::callAsync ([safe = safeThis]
                 {
                     if (safe != nullptr)
                         safe->showDialog (std::make_unique<juce::AlertWindow> ("Muzi Tame", "The preset could not be saved in:\n"
@@ -745,7 +746,7 @@ void MuziTameEditor::showSaveDialog()
         };
         const auto existing = MuziTameProcessor::getUserPresetFolder().getChildFile (name + MuziTameProcessor::kUserPresetExt);
         if (! existing.existsAsFile()) { doSave(); return; }
-        juce::MessageManager::callAsync ([safe = juce::Component::SafePointer<MuziTameEditor> (this), name, doSave]
+        juce::MessageManager::callAsync ([safe = safeThis, name, doSave]
         {
             if (safe == nullptr) return;
             auto c = std::make_unique<juce::AlertWindow> ("Replace preset?", "\"" + name + "\" already exists. Replace it with the current settings?",
@@ -876,6 +877,13 @@ void MuziTameEditor::resized()
 
     for (auto* k : { &depth, &threshold, &sharpness, &attack, &release, &punch, &broad, &guard, &maxcut, &mix, &trim })
         k->resized();
+
+   #if TAME_LITE
+    // Free edition: Depth, Mix, Output, Delta, Live mode and the factory presets. The rest is in the full version.
+    for (juce::Component* c : std::initializer_list<juce::Component*> { &threshold, &sharpness, &attack, &release, &punch, &broad,
+                                                                        &guard, &maxcut, &savePreset, &modeStd, &modeHi, &peakGuardBtn })
+        c->setVisible (false);
+   #endif
 }
 
 juce::String MuziTameEditor::footerText() const
@@ -892,8 +900,13 @@ void MuziTameEditor::paint (juce::Graphics& g)
     g.fillAll();
 
     // Epsilon Sounds product mark (shared design system)
+   #if TAME_LITE
+    epsilon_ui::drawProductMark (g, sc (18, 13, 1, 1).getPosition().toFloat(), s, epsilon_ui::Tier::Epsilon, "Tame Lite", {},
+                                 [] (float h, bool b) { return font (h, b); });
+   #else
     epsilon_ui::drawProductMark (g, sc (18, 13, 1, 1).getPosition().toFloat(), s, epsilon_ui::Tier::Muzi, "Tame", {},
                                  [] (float h, bool b) { return font (h, b); });
+   #endif
 
     // control panels
     auto panel = [&] (juce::Rectangle<int> r, const juce::String& title)
@@ -907,10 +920,25 @@ void MuziTameEditor::paint (juce::Graphics& g)
         g.setFont (font (9.5f * s, true, 0.22f));
         g.drawText (title, r.withHeight ((int) (30 * s)).reduced ((int) (12 * s), 0), juce::Justification::centredLeft);
     };
+   #if TAME_LITE
+    panel (panelDyn, "DYNAMICS");
+    panel (panelTame, "TAME LITE");
+    panel (panelChar, "CHARACTER");
+    panel (panelOut, "OUTPUT");
+    auto upsell = [&] (juce::Rectangle<int> r, const juce::String& t)
+    {
+        g.setColour (col::faint);
+        g.setFont (font (11.5f * s));
+        g.drawFittedText (t, r.reduced ((int) (18 * s), (int) (40 * s)), juce::Justification::centred, 5);
+    };
+    upsell (panelDyn,  "Attack, Release and Punch\nare in the full Epsilon Tame.");
+    upsell (panelChar, "Broad, Tonal Guard and Max Cut\nare in the full Epsilon Tame.");
+   #else
     panel (panelDyn, "DYNAMICS");
     panel (panelTame, "TAME");
     panel (panelChar, "CHARACTER");
     panel (panelOut, "OUTPUT");
+   #endif
 
     // footer
     const double rate = proc.getCurrentSampleRate();

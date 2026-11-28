@@ -52,6 +52,10 @@
 #include <memory>
 #include <mutex>
 #include <vector>
+
+#ifndef M_PI  // MSVC only defines M_PI with _USE_MATH_DEFINES
+#define M_PI 3.14159265358979323846
+#endif
 #if defined(MUZI_USE_JUCE_FFT) && MUZI_USE_JUCE_FFT
  #include <juce_dsp/juce_dsp.h>
 #endif
